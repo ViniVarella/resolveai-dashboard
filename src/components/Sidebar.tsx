@@ -8,10 +8,7 @@ import BarChartIcon from '@mui/icons-material/BarChart';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import { Link, useLocation } from 'react-router-dom';
-import { useState } from 'react';
-
-const expandedWidth = 220;
-const collapsedWidth = 64;
+import { SIDEBAR_WIDTH } from '../App';
 
 const menuItems = [
   { text: 'Página Inicial', icon: <DashboardIcon />, path: '/home' },
@@ -22,20 +19,24 @@ const menuItems = [
   { text: 'Estatísticas', icon: <BarChartIcon />, path: '/statistics' },
 ];
 
-export default function Sidebar() {
-  const location = useLocation();
-  const [open, setOpen] = useState(true);
+interface SidebarProps {
+  open: boolean;
+  setOpen: (open: boolean) => void;
+}
 
+export default function Sidebar({ open, setOpen }: SidebarProps) {
+  const location = useLocation();
+  
   return (
     <Drawer
       variant="permanent"
       sx={{
-        width: open ? expandedWidth : collapsedWidth,
+        width: open ? SIDEBAR_WIDTH.expanded : SIDEBAR_WIDTH.collapsed,
         flexShrink: 0,
         whiteSpace: 'nowrap',
         boxSizing: 'border-box',
         [`& .MuiDrawer-paper`]: {
-          width: open ? expandedWidth : collapsedWidth,
+          width: open ? SIDEBAR_WIDTH.expanded : SIDEBAR_WIDTH.collapsed,
           transition: 'width 0.2s',
           overflowX: 'hidden',
           bgcolor: 'background.paper',
@@ -83,11 +84,11 @@ export default function Sidebar() {
         </Box>
         <Tooltip title={open ? 'Recolher' : 'Expandir'}>
           <IconButton
-            onClick={() => setOpen((prev) => !prev)}
+            onClick={() => setOpen(!open)}
             size="small"
             sx={{
               ml: open ? 1 : 0,
-              alignSelf: open ? 'center' : 'unset',
+              alignSelf: 'center',
               position: open ? 'relative' : 'absolute',
               left: open ? 'unset' : '50%',
               top: open ? 'unset' : 16,
