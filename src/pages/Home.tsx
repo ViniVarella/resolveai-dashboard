@@ -1,4 +1,4 @@
-import { Box, Grid, Typography, Select, MenuItem, FormControl, InputLabel, styled } from '@mui/material';
+import { Box, Grid, Typography, Select, MenuItem, FormControl, InputLabel, styled, Card, CardContent } from '@mui/material';
 import { useEffect, useState } from 'react';
 import { db } from '../lib/firebase';
 import { collection, query, where, getDocs, Timestamp } from 'firebase/firestore';
@@ -13,7 +13,6 @@ import {
   Tooltip,
   Legend,
 } from 'chart.js';
-import DashboardCard from '../components/DashboardCard';
 import DataTable from '../components/DataTable';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
@@ -114,35 +113,56 @@ async function fetchAgendamentosHoje(funcionario?: string): Promise<Agendamento[
   return agendamentos.sort((a, b) => a.horario.localeCompare(b.horario));
 }
 
-// Componente para o gráfico de receita
-const ReceitaChart = ({ receitas, options, meses }: { 
-  receitas: number[], 
-  options: any, 
-  meses: string[] 
-}) => {
+// Função para obter os meses do semestre atual e os dados correspondentes
+function getSemestreData(receitas: number[], mesSelecionado: number) {
+  const semestre = mesSelecionado < 6 ? 0 : 1;
+  const start = semestre === 0 ? 0 : 6;
+  const end = semestre === 0 ? 6 : 12;
+  return {
+    meses: meses.slice(start, end),
+    receitas: receitas.slice(start, end),
+  };
+}
+
+// Novo componente para o gráfico do semestre atual
+const ReceitaChartSemestreAtual = ({ receitas, mesSelecionado, options }: { receitas: number[], mesSelecionado: number, options: any }) => {
+  const { meses: mesesSemestre, receitas: receitasSemestre } = getSemestreData(receitas, mesSelecionado);
   const data = {
-    labels: meses,
+    labels: mesesSemestre,
     datasets: [
       {
         label: 'Receita',
-        data: receitas,
+        data: receitasSemestre,
         borderColor: '#fff',
         backgroundColor: 'rgba(255,255,255,0.1)',
         tension: 0.4,
+        fill: true,
       },
     ],
   };
-
-  return receitas.some(r => r > 0) ? (
-    <Line data={data} options={options} height={180} />
-  ) : (
-    <Typography color="#888" align="center" mt={6}>Sem dados para exibir</Typography>
+  return (
+    <Line data={data} options={{ ...options, scales: { ...options.scales, y: { ...options.scales.y, ticks: { ...options.scales.y.ticks, stepSize: 1000 } } }, maintainAspectRatio: false }} style={{ width: '100%', height: '100%' }} />
   );
 };
 
+// Função utilitária para gerar opções de semestre
+function gerarSemestres(anos: number[]): { label: string, ano: number, semestre: 1 | 2 }[] {
+  return anos.flatMap(ano => [
+    { label: `${ano}-1`, ano, semestre: 1 },
+    { label: `${ano}-2`, ano, semestre: 2 },
+  ]);
+}
+
 export default function Home() {
-  const [mesSelecionado, setMesSelecionado] = useState(getMesAtual());
-  const [anoSelecionado] = useState(getAnoAtual());
+  const [anos] = useState(() => {
+    const atual = getAnoAtual();
+    return [atual, atual - 1, atual - 2];
+  });
+  const [semestreSelecionado, setSemestreSelecionado] = useState(() => {
+    const ano = getAnoAtual();
+    const semestre = getMesAtual() < 6 ? 1 : 2;
+    return { ano, semestre };
+  });
   const [receitas, setReceitas] = useState<number[]>(Array(12).fill(0));
   const [agendamentos, setAgendamentos] = useState<Agendamento[]>([]);
   const [funcionarioSelecionado, setFuncionarioSelecionado] = useState('');
@@ -151,11 +171,11 @@ export default function Home() {
 
   useEffect(() => {
     setLoading(true);
-    fetchReceitaPorMes(anoSelecionado).then(receitas => {
+    fetchReceitaPorMes(semestreSelecionado.ano).then(receitas => {
       setReceitas(receitas);
       setLoading(false);
     });
-  }, [anoSelecionado]);
+  }, [semestreSelecionado]);
 
   useEffect(() => {
     setLoadingAgenda(true);
@@ -165,7 +185,10 @@ export default function Home() {
     });
   }, [funcionarioSelecionado]);
 
-  const receitaMes = receitas[mesSelecionado] || 0;
+  // Receita total do semestre selecionado
+  const start = semestreSelecionado.semestre === 1 ? 0 : 6;
+  const end = semestreSelecionado.semestre === 1 ? 6 : 12;
+  const receitaSemestre = receitas.slice(start, end).reduce((acc, v) => acc + v, 0);
 
   const options = {
     responsive: true,
@@ -179,62 +202,79 @@ export default function Home() {
     },
   };
 
+  const semestresOpcoes = gerarSemestres(anos);
+
   return (
-    <Box sx={{ width: '100%', maxWidth: '100%' }}>
-      <Grid container spacing={4} justifyContent="space-between" alignItems="flex-start">
-        <Grid item xs={12} md={6}>
-          <DashboardCard>
-            <CardHeader>
-              <Typography variant="h6" color="#aaa">Receita</Typography>
-              <FormControl size="small" sx={{ minWidth: 100 }}>
-                <InputLabel sx={{ color: '#fff' }}>Mês</InputLabel>
-                <StyledSelect
-                  value={mesSelecionado}
-                  label="Mês"
-                  onChange={e => setMesSelecionado(Number(e.target.value))}
-                  MenuProps={{ PaperProps: { sx: { background: '#222', color: '#fff' } } }}
-                >
-                  {meses.map((mes, idx) => (
-                    <MenuItem value={idx} key={mes}>{mes}</MenuItem>
-                  ))}
-                </StyledSelect>
-              </FormControl>
-            </CardHeader>
-            <Typography variant="h3" mb={2} fontWeight={600}>
-              {loading ? 'Carregando...' : receitaMes.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-            </Typography>
-            <Box sx={{ height: 180, width: '100%' }}>
-              <ReceitaChart receitas={receitas} options={options} meses={meses} />
-            </Box>
-          </DashboardCard>
+    <Box sx={{ width: '100%', maxWidth: '100%', height: '100vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+      <Typography variant="h4" fontWeight={600} mb={3} sx={{ ml: 1, mt: 2 }}>
+        Página Inicial
+      </Typography>
+      <Grid container spacing={4} sx={{ flex: 1, minHeight: 0 }}>
+        <Grid item xs={12} md={6} sx={{ height: '100%' }}>
+          <Card sx={{ background: '#222', color: '#fff', borderRadius: 4, minHeight: 200, height: 500, display: 'flex', flexDirection: 'column', position: 'relative' }}>
+            <CardContent sx={{ p: 4, flex: 1, display: 'flex', flexDirection: 'column', pb: 4, height: '100%', minHeight: 0, overflow: 'hidden' }}>
+              <CardHeader>
+                <Typography variant="h6" color="#aaa" sx={{ fontSize: theme => `calc(${theme.typography.h6.fontSize} + 7px)` }}>Receita</Typography>
+                <FormControl size="small" sx={{ minWidth: 120 }}>
+                  <InputLabel sx={{ color: '#fff' }}>Semestre</InputLabel>
+                  <StyledSelect
+                    value={`${semestreSelecionado.ano}-${semestreSelecionado.semestre}`}
+                    label="Semestre"
+                    onChange={(e) => {
+                      const value = e.target.value as string;
+                      const [ano, semestre] = value.split('-');
+                      setSemestreSelecionado({ ano: Number(ano), semestre: Number(semestre) });
+                    }}
+                    MenuProps={{ PaperProps: { sx: { background: '#222', color: '#fff' } } }}
+                  >
+                    {semestresOpcoes.map(opt => (
+                      <MenuItem value={opt.label} key={opt.label}>{opt.label}</MenuItem>
+                    ))}
+                  </StyledSelect>
+                </FormControl>
+              </CardHeader>
+              <Typography variant="h4" mb={2} fontWeight={600} sx={{ fontSize: { xs: '1.6rem', sm: '2.2rem', md: '2.5rem' } }}>
+                {loading ? 'Carregando...' : receitaSemestre.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+              </Typography>
+              <Box sx={{ width: '100%', flex: 1, height: '100%', minHeight: 0, overflow: 'hidden' }}>
+                <ReceitaChartSemestreAtual
+                  receitas={receitas}
+                  mesSelecionado={semestreSelecionado.semestre === 1 ? 0 : 6}
+                  options={options}
+                />
+              </Box>
+            </CardContent>
+          </Card>
         </Grid>
-        <Grid item xs={12} md={6}>
-          <DashboardCard>
-            <CardHeader>
-              <Typography variant="h6" color="#aaa">Agenda Hoje</Typography>
-              <FormControl size="small" sx={{ minWidth: 120 }}>
-                <InputLabel sx={{ color: '#fff' }}>Funcionário</InputLabel>
-                <StyledSelect
-                  value={funcionarioSelecionado}
-                  label="Funcionário"
-                  onChange={(e) => setFuncionarioSelecionado(e.target.value as string)}
-                  MenuProps={{ PaperProps: { sx: { background: '#222', color: '#fff' } } }}
-                >
-                  <MenuItem value={''}>Todos</MenuItem>
-                  <MenuItem value={'func1'}>Funcionário 1</MenuItem>
-                  <MenuItem value={'func2'}>Funcionário 2</MenuItem>
-                </StyledSelect>
-              </FormControl>
-            </CardHeader>
-            <Box sx={{ width: '100%' }}>
-              <DataTable
-                columns={["Horário", "Cliente", "Serviço"]}
-                rows={agendamentos.map(a => [a.horario, a.cliente, a.servico])}
-                loading={loadingAgenda}
-                emptyMessage="Nenhum agendamento para hoje"
-              />
-            </Box>
-          </DashboardCard>
+        <Grid item xs={12} md={6} sx={{ height: '100%' }}>
+          <Card sx={{ background: '#222', color: '#fff', borderRadius: 4, minHeight: 200, height: 500, display: 'flex', flexDirection: 'column', position: 'relative' }}>
+            <CardContent sx={{ p: 4, flex: 1, display: 'flex', flexDirection: 'column', pb: 4 }}>
+              <CardHeader>
+                <Typography variant="h6" color="#aaa" sx={{ fontSize: theme => `calc(${theme.typography.h6.fontSize} + 7px)` }}>Agenda Hoje</Typography>
+                <FormControl size="small" sx={{ minWidth: 120 }}>
+                  <InputLabel sx={{ color: '#fff' }}>Funcionário</InputLabel>
+                  <StyledSelect
+                    value={funcionarioSelecionado}
+                    label="Funcionário"
+                    onChange={(e) => setFuncionarioSelecionado(e.target.value as string)}
+                    MenuProps={{ PaperProps: { sx: { background: '#222', color: '#fff' } } }}
+                  >
+                    <MenuItem value={''}>Todos</MenuItem>
+                    <MenuItem value={'func1'}>Funcionário 1</MenuItem>
+                    <MenuItem value={'func2'}>Funcionário 2</MenuItem>
+                  </StyledSelect>
+                </FormControl>
+              </CardHeader>
+              <Box sx={{ width: '100%', flex: 1 }}>
+                <DataTable
+                  columns={["Horário", "Cliente", "Serviço"]}
+                  rows={agendamentos.map(a => [a.horario, a.cliente, a.servico])}
+                  loading={loadingAgenda}
+                  emptyMessage="Nenhum agendamento para hoje"
+                />
+              </Box>
+            </CardContent>
+          </Card>
         </Grid>
       </Grid>
     </Box>

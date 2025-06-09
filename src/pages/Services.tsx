@@ -111,7 +111,7 @@ export default function Services() {
       <Grid container spacing={4}>
         {servicos.map(servico => (
           <Grid item xs={12} md={6} lg={4} key={servico.id}>
-            <Card sx={{ bgcolor: '#222', color: '#fff', borderRadius: 4, minHeight: 200, position: 'relative' }}>
+            <Card sx={{ background: '#222', color: '#fff', borderRadius: 4, minHeight: 200, position: 'relative' }}>
               <CardContent>
                 {editId === servico.id ? (
                   <>

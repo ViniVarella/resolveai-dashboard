@@ -1,5 +1,4 @@
 import { AppBar, Toolbar, Avatar, IconButton, Box, Typography, Menu, MenuItem } from '@mui/material';
-import NotificationsIcon from '@mui/icons-material/Notifications';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useState } from 'react';
 
@@ -23,6 +22,8 @@ export default function Header({ open, sidebarWidth }: HeaderProps) {
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const navigate = useNavigate();
 
+  const fotoPerfil = localStorage.getItem('fotoPerfil') || '/@image.png';
+
   const handleAvatarClick = (event: React.MouseEvent<HTMLElement>) => {
     setAnchorEl(event.currentTarget);
   };
@@ -34,7 +35,7 @@ export default function Header({ open, sidebarWidth }: HeaderProps) {
     localStorage.removeItem('auth');
     navigate('/login');
   };
-
+  
   return (
     <Box
       sx={{
@@ -47,19 +48,13 @@ export default function Header({ open, sidebarWidth }: HeaderProps) {
         zIndex: 1100,
         padding: '16px 24px',
         display: 'flex',
-        justifyContent: 'space-between',
+        justifyContent: 'flex-end',
         alignItems: 'center',
       }}
     >
-      <Typography variant="h5" sx={{ fontWeight: 500 }}>
-        {title}
-      </Typography>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-        <IconButton>
-          <NotificationsIcon />
-        </IconButton>
+      <Box sx={{ display: 'flex', alignItems: 'center' }}>
         <IconButton onClick={handleAvatarClick} sx={{ p: 0 }}>
-          <Avatar alt="Admin" src="https://i.pravatar.cc/40?img=3" />
+          <Avatar alt="Admin" src={fotoPerfil} />
         </IconButton>
         <Menu
           anchorEl={anchorEl}

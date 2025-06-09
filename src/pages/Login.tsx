@@ -4,7 +4,7 @@ import Visibility from '@mui/icons-material/Visibility';
 import VisibilityOff from '@mui/icons-material/VisibilityOff';
 import { db } from '../lib/firebase';
 import { collection, query, where, getDocs } from 'firebase/firestore';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 
 export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
@@ -23,7 +23,9 @@ export default function Login() {
       const snapshot = await getDocs(q);
       if (!snapshot.empty) {
         setError('');
+        const userData = snapshot.docs[0].data();
         localStorage.setItem('auth', 'true');
+        localStorage.setItem('fotoPerfil', userData.fotoPerfil || '');
         navigate('/home');
       } else {
         setError('E-mail ou senha incorretos.');
@@ -38,18 +40,26 @@ export default function Login() {
   return (
     <Box sx={{
       minHeight: '100vh',
-      width: '100vw',
+      width: '100%',
+      maxWidth: '100%',
       bgcolor: '#000',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
+      py: { xs: 2, sm: 4, md: 6 },
+      px: { xs: 2, sm: 3 },
+      boxSizing: 'border-box',
+      overflow: 'hidden',
+      position: 'relative',
+      overflowY: 'auto',
     }}>
       <Paper elevation={6} sx={{
         bgcolor: '#181818',
         color: '#fff',
         borderRadius: 4,
         p: 5,
-        minWidth: 380,
+        minWidth: 280,
+        width: { xs: '95vw', sm: '90vw', md: '600px', lg: '700px' },
         maxWidth: '90vw',
         display: 'flex',
         flexDirection: 'column',
@@ -125,7 +135,20 @@ export default function Login() {
           <Button
             fullWidth
             variant="contained"
-            sx={{ bgcolor: '#222', color: '#fff', fontWeight: 700, fontSize: 20, py: 1.2, boxShadow: 2 }}
+            sx={{
+              bgcolor: '#222',
+              color: '#fff',
+              fontWeight: 700,
+              fontSize: 20,
+              py: 1.2,
+              boxShadow: 2,
+              textAlign: 'center',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+            component={Link}
+            to="/register"
           >
             Cadastre-se agora
           </Button>

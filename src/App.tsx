@@ -9,6 +9,7 @@ import Employees from './pages/Employees';
 import Schedule from './pages/Schedule';
 import Statistics from './pages/Statistics';
 import Login from './pages/Login';
+import Register from './pages/Register';
 import PrivateRoute from './components/PrivateRoute';
 import { useState } from 'react';
 
@@ -21,7 +22,7 @@ function AppContent() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const currentWidth = sidebarOpen ? SIDEBAR_WIDTH.expanded : SIDEBAR_WIDTH.collapsed;
   const location = useLocation();
-  const isLoginPage = location.pathname === '/login';
+  const isLoginPage = location.pathname === '/login' || location.pathname === '/register';
 
   return (
     <Box sx={{ display: 'flex', height: '100vh', bgcolor: 'background.default' }}>
@@ -47,6 +48,7 @@ function AppContent() {
           <Routes>
             <Route path="/" element={<Navigate to="/login" />} />
             <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
             <Route path="/home" element={<PrivateRoute><Home /></PrivateRoute>} />
             <Route path="/services" element={<PrivateRoute><Services /></PrivateRoute>} />
             <Route path="/revenue" element={<PrivateRoute><Revenue /></PrivateRoute>} />
