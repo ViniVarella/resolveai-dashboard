@@ -1,6 +1,7 @@
-import { AppBar, Toolbar, Avatar, IconButton, Box, Typography } from '@mui/material';
+import { AppBar, Toolbar, Avatar, IconButton, Box, Typography, Menu, MenuItem } from '@mui/material';
 import NotificationsIcon from '@mui/icons-material/Notifications';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { useState } from 'react';
 
 const pageTitles: Record<string, string> = {
   '/home': 'Página Inicial',
@@ -19,7 +20,21 @@ interface HeaderProps {
 export default function Header({ open, sidebarWidth }: HeaderProps) {
   const location = useLocation();
   const title = pageTitles[location.pathname] || '';
-  
+  const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+  const navigate = useNavigate();
+
+  const handleAvatarClick = (event: React.MouseEvent<HTMLElement>) => {
+    setAnchorEl(event.currentTarget);
+  };
+  const handleClose = () => {
+    setAnchorEl(null);
+  };
+  const handleLogout = () => {
+    setAnchorEl(null);
+    localStorage.removeItem('auth');
+    navigate('/login');
+  };
+
   return (
     <Box
       sx={{
@@ -43,7 +58,18 @@ export default function Header({ open, sidebarWidth }: HeaderProps) {
         <IconButton>
           <NotificationsIcon />
         </IconButton>
-        <Avatar alt="Admin" src="https://i.pravatar.cc/40?img=3" />
+        <IconButton onClick={handleAvatarClick} sx={{ p: 0 }}>
+          <Avatar alt="Admin" src="https://i.pravatar.cc/40?img=3" />
+        </IconButton>
+        <Menu
+          anchorEl={anchorEl}
+          open={Boolean(anchorEl)}
+          onClose={handleClose}
+          anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+          transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+        >
+          <MenuItem onClick={handleLogout}>Sair</MenuItem>
+        </Menu>
       </Box>
     </Box>
   );
