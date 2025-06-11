@@ -130,8 +130,8 @@ export default function Statistics() {
       </Typography>
       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
         {/* Card Receita Anual */}
-        <Card sx={{ background: '#222', color: '#fff', borderRadius: 4, minWidth: 350, flex: 1, minHeight: 400, display: 'flex', flexDirection: 'column' }}>
-          <CardContent sx={{ p: 4, flex: 1, display: 'flex', flexDirection: 'column' }}>
+        <Card sx={{ background: '#222', color: '#fff', borderRadius: 4, minWidth: 350, flex: 1, minHeight: 400, display: 'flex', flexDirection: 'column', height: 650 }}>
+          <CardContent sx={{ p: 4, flex: 1, display: 'flex', flexDirection: 'column', height: '100%' }}>
             <CardHeader>
               <Typography variant="h6" color="#aaa" sx={{ fontSize: theme => `calc(${theme.typography.h6.fontSize} + 7px)` }}>Receita Anual</Typography>
               <FormControl size="small" sx={{ minWidth: 120 }}>
@@ -151,7 +151,7 @@ export default function Statistics() {
             <Typography variant="h4" mb={2} fontWeight={600} sx={{ fontSize: { xs: '1.6rem', sm: '2.2rem', md: '2.5rem' } }}>
               {loadingReceita ? 'Carregando...' : receitas.reduce((acc, v) => acc + v, 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
             </Typography>
-            <Box sx={{ width: '100%', flex: 1, height: 260, minHeight: 0, overflow: 'hidden' }}>
+            <Box sx={{ width: '100%', flex: 1, height: '100%', minHeight: 0, overflow: 'hidden' }}>
               <Line
                 data={{
                   labels: meses,
@@ -181,8 +181,8 @@ export default function Statistics() {
           </CardContent>
         </Card>
         {/* Card Serviços Mais Populares */}
-        <Card sx={{ background: '#222', color: '#fff', borderRadius: 4, minWidth: 350, flex: 1, minHeight: 400, display: 'flex', flexDirection: 'column' }}>
-          <CardContent sx={{ p: 4, flex: 1, display: 'flex', flexDirection: 'column' }}>
+        <Card sx={{ background: '#222', color: '#fff', borderRadius: 4, minWidth: 350, flex: 1, minHeight: 400, display: 'flex', flexDirection: 'column', height: 650 }}>
+          <CardContent sx={{ p: 4, flex: 1, display: 'flex', flexDirection: 'column', height: '100%' }}>
             <CardHeader>
               <Typography variant="h6" color="#aaa" sx={{ fontSize: theme => `calc(${theme.typography.h6.fontSize} + 7px)` }}>Serviços Mais Populares</Typography>
               <Button
@@ -243,7 +243,7 @@ export default function Statistics() {
                 </Box>
               </Popover>
             </CardHeader>
-            <Box sx={{ width: '100%', flex: 1, height: 260, minHeight: 0, overflow: 'hidden' }}>
+            <Box sx={{ width: '100%', flex: 1, height: '100%', minHeight: 0, overflow: 'hidden' }}>
               <Bar
                 data={{
                   labels: servicos.map(s => s.servico),

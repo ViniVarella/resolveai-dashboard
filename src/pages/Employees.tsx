@@ -107,67 +107,83 @@ export default function Employees() {
       <Typography variant="h4" fontWeight={600} mb={3}>
         Funcionários
       </Typography>
-      <Grid container spacing={4}>
-        {funcionarios.map(func => (
-          <Grid item xs={12} md={6} lg={4} key={func.id}>
-            <Card sx={{ background: '#222', color: '#fff', borderRadius: 4, minHeight: 200, position: 'relative' }}>
-              <CardContent>
-                {editId === func.id ? (
-                  <>
-                    <TextField
-                      label="Nome"
-                      value={editData.nome}
-                      onChange={e => handleChange('nome', e.target.value)}
-                      fullWidth
-                      sx={{ mb: 1, input: { color: '#fff' }, label: { color: '#aaa' } }}
-                    />
-                    <TextField
-                      label="Telefone"
-                      value={editData.telefone}
-                      onChange={e => handleChange('telefone', e.target.value)}
-                      fullWidth
-                      sx={{ mb: 1, input: { color: '#fff' }, label: { color: '#aaa' } }}
-                    />
-                    <TextField
-                      label="Email"
-                      value={editData.email}
-                      onChange={e => handleChange('email', e.target.value)}
-                      fullWidth
-                      sx={{ mb: 1, input: { color: '#fff' }, label: { color: '#aaa' } }}
-                    />
-                    <TextField
-                      label="Serviços Habilitados"
-                      value={editData.servicosHabilitados?.join(', ')}
-                      onChange={e => handleChange('servicosHabilitados', e.target.value.split(',').map((s: string) => s.trim()))}
-                      fullWidth
-                      sx={{ mb: 1, input: { color: '#fff' }, label: { color: '#aaa' } }}
-                    />
-                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, mt: 1 }}>
-                      <Box>
-                        <IconButton onClick={handleSave} sx={{ color: 'lightgreen' }}><CheckIcon /></IconButton>
-                        <IconButton onClick={handleCancel} sx={{ color: 'tomato' }}><CloseIcon /></IconButton>
+      {funcionarios.length === 0 ? (
+        <Box sx={{ 
+          display: 'flex', 
+          flexDirection: 'column', 
+          alignItems: 'center', 
+          justifyContent: 'center', 
+          minHeight: '400px',
+          color: '#888',
+          textAlign: 'center',
+          gap: 2
+        }}>
+          <Typography variant="h5">Nenhum funcionário cadastrado</Typography>
+          <Typography>Clique no botão + para adicionar um novo funcionário</Typography>
+        </Box>
+      ) : (
+        <Grid container spacing={4}>
+          {funcionarios.map(func => (
+            <Grid item xs={12} md={6} lg={4} key={func.id}>
+              <Card sx={{ background: '#222', color: '#fff', borderRadius: 4, minHeight: 200, position: 'relative' }}>
+                <CardContent>
+                  {editId === func.id ? (
+                    <>
+                      <TextField
+                        label="Nome"
+                        value={editData.nome}
+                        onChange={e => handleChange('nome', e.target.value)}
+                        fullWidth
+                        sx={{ mb: 1, input: { color: '#fff' }, label: { color: '#aaa' } }}
+                      />
+                      <TextField
+                        label="Telefone"
+                        value={editData.telefone}
+                        onChange={e => handleChange('telefone', e.target.value)}
+                        fullWidth
+                        sx={{ mb: 1, input: { color: '#fff' }, label: { color: '#aaa' } }}
+                      />
+                      <TextField
+                        label="Email"
+                        value={editData.email}
+                        onChange={e => handleChange('email', e.target.value)}
+                        fullWidth
+                        sx={{ mb: 1, input: { color: '#fff' }, label: { color: '#aaa' } }}
+                      />
+                      <TextField
+                        label="Serviços Habilitados"
+                        value={editData.servicosHabilitados?.join(', ')}
+                        onChange={e => handleChange('servicosHabilitados', e.target.value.split(',').map((s: string) => s.trim()))}
+                        fullWidth
+                        sx={{ mb: 1, input: { color: '#fff' }, label: { color: '#aaa' } }}
+                      />
+                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, mt: 1 }}>
+                        <Box>
+                          <IconButton onClick={handleSave} sx={{ color: 'lightgreen' }}><CheckIcon /></IconButton>
+                          <IconButton onClick={handleCancel} sx={{ color: 'tomato' }}><CloseIcon /></IconButton>
+                        </Box>
+                        <IconButton onClick={() => handleDelete(func.id)} sx={{ color: 'red', bgcolor: '#222', '&:hover': { bgcolor: '#333' } }}>
+                          <DeleteIcon />
+                        </IconButton>
                       </Box>
-                      <IconButton onClick={() => handleDelete(func.id)} sx={{ color: 'red', bgcolor: '#222', '&:hover': { bgcolor: '#333' } }}>
-                        <DeleteIcon />
+                    </>
+                  ) : (
+                    <>
+                      <Typography variant="h5" color="#aaa" mb={1}>{func.nome}</Typography>
+                      <Typography><b>Telefone:</b> {func.telefone}</Typography>
+                      <Typography><b>Email:</b> {func.email}</Typography>
+                      <Typography><b>Serviços Habilitados:</b> {func.servicosHabilitados?.join(', ')}</Typography>
+                      <IconButton onClick={() => handleEdit(func)} sx={{ position: 'absolute', top: 16, right: 16, bgcolor: '#444', color: '#fff', '&:hover': { bgcolor: '#555' } }}>
+                        <EditIcon />
                       </IconButton>
-                    </Box>
-                  </>
-                ) : (
-                  <>
-                    <Typography variant="h5" color="#aaa" mb={1}>{func.nome}</Typography>
-                    <Typography><b>Telefone:</b> {func.telefone}</Typography>
-                    <Typography><b>Email:</b> {func.email}</Typography>
-                    <Typography><b>Serviços Habilitados:</b> {func.servicosHabilitados?.join(', ')}</Typography>
-                    <IconButton onClick={() => handleEdit(func)} sx={{ position: 'absolute', top: 16, right: 16, bgcolor: '#444', color: '#fff', '&:hover': { bgcolor: '#555' } }}>
-                      <EditIcon />
-                    </IconButton>
-                  </>
-                )}
-              </CardContent>
-            </Card>
-          </Grid>
-        ))}
-      </Grid>
+                    </>
+                  )}
+                </CardContent>
+              </Card>
+            </Grid>
+          ))}
+        </Grid>
+      )}
       <Tooltip title="Adicionar Funcionário">
         <Fab
           color="primary"

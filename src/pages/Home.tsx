@@ -1,5 +1,5 @@
 import { Box, Typography, Card, CardContent, FormControl, InputLabel, Select, MenuItem, Button, Popover, Checkbox } from '@mui/material';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { db } from '../lib/firebase';
 import { collection, getDocs, query, where, Timestamp } from 'firebase/firestore';
 import { Line } from 'react-chartjs-2';
@@ -34,7 +34,7 @@ const meses = [
   'Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun',
   'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'
 ];
-const horas = Array.from({ length: 11 }, (_, i) => `${(8 + i).toString().padStart(2, '0')}:00`); // 08:00 às 18:00
+const horas = Array.from({ length: 13 }, (_, i) => `${(8 + i).toString().padStart(2, '0')}:00`); // 08:00 até 20:00
 
 function getAnoAtual() {
   return new Date().getFullYear();
@@ -118,6 +118,8 @@ export default function Home() {
   };
   const openFiltro = Boolean(anchorEl);
 
+  const gridRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     setLoadingReceita(true);
     fetchReceitaPorMes(anoSelecionado).then(receitas => {
@@ -134,6 +136,19 @@ export default function Home() {
       setLoadingAgenda(false);
     });
   }, []);
+
+  // Scroll automático para o horário atual
+  useEffect(() => {
+    if (!gridRef.current) return;
+    const now = new Date();
+    const horaAtual = now.getHours();
+    // Encontra o índice do horário mais próximo (exato ou próximo abaixo)
+    const idx = horas.findIndex(h => Number(h.split(':')[0]) >= horaAtual);
+    if (idx > 0) {
+      const cellHeight = gridRef.current.scrollHeight / horas.length;
+      gridRef.current.scrollTop = cellHeight * (idx - 1); // Deixa o horário atual no topo
+    }
+  }, [funcionarios.length, agendamentos.length]);
 
   // Dados do semestre selecionado
   const start = semestreSelecionado === 1 ? 0 : 6;
@@ -156,8 +171,8 @@ export default function Home() {
       </Typography>
       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
         {/* Card Receita Semestre */}
-        <Card sx={{ background: '#222', color: '#fff', borderRadius: 4, minWidth: 350, flex: 1, minHeight: 400, display: 'flex', flexDirection: 'column' }}>
-          <CardContent sx={{ p: 4, flex: 1, display: 'flex', flexDirection: 'column' }}>
+        <Card sx={{ background: '#222', color: '#fff', borderRadius: 4, minWidth: 350, flex: 1, display: 'flex', flexDirection: 'column', height: 650 }}>
+          <CardContent sx={{ p: 4, display: 'flex', flexDirection: 'column', height: '100%' }}>
             <CardHeader>
               <Typography variant="h6" color="#aaa" sx={{ fontSize: theme => `calc(${theme.typography.h6.fontSize} + 7px)` }}>Receita Semestre</Typography>
               <Button
@@ -205,7 +220,7 @@ export default function Home() {
             <Typography variant="h4" mb={2} fontWeight={600} sx={{ fontSize: { xs: '1.6rem', sm: '2.2rem', md: '2.5rem' } }}>
               {loadingReceita ? 'Carregando...' : receitaTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
             </Typography>
-            <Box sx={{ width: '100%', flex: 1, height: 260, minHeight: 0, overflow: 'hidden' }}>
+            <Box sx={{ width: '100%', flex: 1, height: '100%', minHeight: 0, overflow: 'hidden' }}>
               <Line
                 data={{
                   labels: mesesSemestre,
@@ -235,12 +250,12 @@ export default function Home() {
           </CardContent>
         </Card>
         {/* Card Agenda Hoje */}
-        <Card sx={{ background: '#222', color: '#fff', borderRadius: 4, minWidth: 350, flex: 2, minHeight: 400, display: 'flex', flexDirection: 'column' }}>
-          <CardContent sx={{ p: 4, flex: 1, display: 'flex', flexDirection: 'column' }}>
+        <Card sx={{ background: '#222', color: '#fff', borderRadius: 4, minWidth: 350, flex: 2, display: 'flex', flexDirection: 'column', height: 650 }}>
+          <CardContent sx={{ p: 4, display: 'flex', flexDirection: 'column', height: '100%' }}>
             <CardHeader>
               <Typography variant="h6" color="#aaa" sx={{ fontSize: theme => `calc(${theme.typography.h6.fontSize} + 7px)` }}>Agenda Hoje</Typography>
             </CardHeader>
-            <Box sx={{ flex: 1, bgcolor: '#181818', borderRadius: 3, p: 2, display: 'flex', flexDirection: 'column', minHeight: 0, overflowX: 'auto' }}>
+            <Box sx={{ flex: 1, bgcolor: '#181818', borderRadius: 3, p: 2, display: 'flex', flexDirection: 'column', minHeight: 0, overflowX: 'auto', height: '100%' }}>
               {/* Cabeçalho dos nomes dos funcionários com coluna de horários */}
               <Box sx={{ display: 'grid', gridTemplateColumns: `80px repeat(${funcionarios.length}, 1fr)`, mb: 0.5 }}>
                 <Box sx={{ bgcolor: '#111', p: 1, textAlign: 'center', borderTopLeftRadius: 12 }}>
@@ -253,15 +268,15 @@ export default function Home() {
                 ))}
               </Box>
               {/* Linhas de horas com coluna fixa de horários */}
-              <Box sx={{ flex: 1, display: 'grid', gridTemplateRows: `repeat(${horas.length}, 1fr)`, gridTemplateColumns: `80px repeat(${funcionarios.length}, 1fr)`, gap: 0, height: '100%' }}>
+              <Box ref={gridRef} sx={{ flex: 1, display: 'grid', gridTemplateRows: `repeat(${horas.length}, 1fr)`, gridTemplateColumns: `80px repeat(${funcionarios.length}, 1fr)`, gap: 0, height: '100%', overflowY: 'auto' }}>
                 {horas.map((hora, rowIdx) => [
-                  <Box key={hora + '-hora'} sx={{ border: '1px solid #222', minHeight: 40, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, color: '#aaa', bgcolor: '#181818', fontWeight: 600 }}>
+                  <Box key={hora + '-hora'} sx={{ border: '1px solid #222', minHeight: 56, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, color: '#aaa', bgcolor: '#181818', fontWeight: 600 }}>
                     {hora}
                   </Box>,
                   ...funcionarios.map((func, colIdx) => {
                     const ag = agendamentos.find(a => a.funcionario === func.id && a.horario === hora);
                     return (
-                      <Box key={hora + '-' + func.id} sx={{ border: '1px solid #222', minHeight: 40, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, color: ag ? '#fff' : '#888', bgcolor: ag ? '#333' : 'transparent' }}>
+                      <Box key={hora + '-' + func.id} sx={{ border: '1px solid #222', minHeight: 56, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, color: ag ? '#fff' : '#888', bgcolor: ag ? '#333' : 'transparent' }}>
                         {ag ? `${ag.cliente} - ${ag.servico}` : ''}
                       </Box>
                     );

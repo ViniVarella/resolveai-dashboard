@@ -140,7 +140,7 @@ export default function Revenue() {
       <Typography variant="h4" fontWeight={600} mb={3}>
         Faturamento
       </Typography>
-      <Card sx={{ background: '#222', color: '#fff', borderRadius: 4, minHeight: 200, position: 'relative', height: 500, display: 'flex', flexDirection: 'column' }}>
+      <Card sx={{ background: '#222', color: '#fff', borderRadius: 4, minHeight: 200, position: 'relative', height: 650, display: 'flex', flexDirection: 'column' }}>
         <CardContent sx={{ p: 4, display: 'flex', flexDirection: 'column', flex: 1, height: '100%' }}>
           <CardHeader>
     <Box>
@@ -163,7 +163,7 @@ export default function Revenue() {
               </StyledSelect>
             </FormControl>
           </CardHeader>
-          <Box sx={{ width: '100%', flex: 1, height: '100%', mt: 4, minHeight: 0 }}>
+          <Box sx={{ width: '100%', flex: 1, height: '100%', minHeight: 0 }}>
             <ReceitaChart receitas={receitas} options={options} meses={meses} />
           </Box>
         </CardContent>
