@@ -1,11 +1,7 @@
-<<<<<<< HEAD
-import { Box, Grid, Typography, Select, MenuItem, FormControl, InputLabel, styled, Card, CardContent } from '@mui/material';
-=======
 import { Box, Typography, Card, CardContent, FormControl, InputLabel, Select, MenuItem, Button, Popover, Grid } from '@mui/material';
->>>>>>> 96fc4f0 (adicionando mais backed)
 import { useEffect, useState } from 'react';
 import { db } from '../lib/firebase';
-import { collection, query, where, getDocs, Timestamp } from 'firebase/firestore';
+import { collection, query, where, getDocs, Timestamp, getDoc, doc } from 'firebase/firestore';
 import { Line } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
@@ -19,17 +15,10 @@ import {
 } from 'chart.js';
 import DataTable from '../components/DataTable';
 import { useUserContext } from '../contexts/UserContext';
-<<<<<<< HEAD
-
-ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
-
-// Tipagem para os dados
-=======
 import { styled } from '@mui/material/styles';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
 
->>>>>>> 96fc4f0 (adicionando mais backed)
 interface Agendamento {
   id: string;
   clienteId: string;
@@ -50,8 +39,6 @@ interface Agendamento {
   updatedAt: Timestamp;
 }
 
-<<<<<<< HEAD
-=======
 interface AgendamentoSimplificado {
   funcionario: string;
   horario: string;
@@ -59,7 +46,6 @@ interface AgendamentoSimplificado {
   servico: string;
 }
 
->>>>>>> 96fc4f0 (adicionando mais backed)
 // Componentes estilizados
 const CardHeader = styled(Box)({
   display: 'flex',
@@ -89,6 +75,10 @@ function getMesAtual() {
   return new Date().getMonth();
 }
 
+function getSemestreAtual() {
+  return getMesAtual() < 6 ? 1 : 2;
+}
+
 async function fetchReceitaPorMes(ano: number, empresaId: string): Promise<number[]> {
   if (!empresaId) {
     console.error('ID da empresa não fornecido');
@@ -107,16 +97,6 @@ async function fetchReceitaPorMes(ano: number, empresaId: string): Promise<numbe
   console.log('Agendamentos encontrados:', snapshot.size);
   
   snapshot.forEach(doc => {
-<<<<<<< HEAD
-    const data = doc.data() as Agendamento;
-    if (!data.servico?.preco || !data.data) return;
-    
-    // Convertendo o Timestamp do Firestore para Date
-    const dataObj = data.data.toDate();
-    if (dataObj.getFullYear() === ano) {
-      const mes = dataObj.getMonth();
-      receitas[mes] += Number(data.servico.preco);
-=======
     const agendamento = doc.data() as Agendamento;
     if (!agendamento.servico?.preco || !agendamento.data) return;
     
@@ -124,7 +104,6 @@ async function fetchReceitaPorMes(ano: number, empresaId: string): Promise<numbe
     if (dataObj.getFullYear() === ano) {
       const mes = dataObj.getMonth();
       receitas[mes] += Number(agendamento.servico.preco);
->>>>>>> 96fc4f0 (adicionando mais backed)
     }
   });
 
@@ -132,21 +111,41 @@ async function fetchReceitaPorMes(ano: number, empresaId: string): Promise<numbe
   return receitas;
 }
 
-async function fetchAgendamentosHoje(empresaId: string, funcionarioId?: string): Promise<Agendamento[]> {
-  if (!empresaId) {
-    console.error('ID da empresa não fornecido');
+async function fetchFuncionarios(empresaId: string): Promise<{ id: string; nome: string }[]> {
+  if (!empresaId) return [];
+  
+  try {
+    const empresaDoc = await getDoc(doc(db, 'empresas', empresaId));
+    if (!empresaDoc.exists()) return [];
+    
+    const empresaData = empresaDoc.data();
+    const funcionariosIds = empresaData.funcionarios || [];
+    
+    const funcionariosPromises = funcionariosIds.map(async (id: string) => {
+      const funcionarioDoc = await getDoc(doc(db, 'users', id));
+      if (funcionarioDoc.exists()) {
+        const data = funcionarioDoc.data();
+        return {
+          id: funcionarioDoc.id,
+          nome: data.nome || ''
+        };
+      }
+      return null;
+    });
+    
+    return (await Promise.all(funcionariosPromises)).filter(Boolean) as { id: string; nome: string }[];
+  } catch (error) {
+    console.error('Erro ao buscar funcionários:', error);
     return [];
   }
+}
 
-<<<<<<< HEAD
-=======
 async function fetchAgendamentosHoje(empresaId: string, funcionarioId?: string): Promise<AgendamentoSimplificado[]> {
   if (!empresaId) {
     console.error('ID da empresa não fornecido');
     return [];
   }
 
->>>>>>> 96fc4f0 (adicionando mais backed)
   const hoje = new Date();
   hoje.setHours(0, 0, 0, 0);
   const amanha = new Date(hoje);
@@ -156,14 +155,8 @@ async function fetchAgendamentosHoje(empresaId: string, funcionarioId?: string):
   const fimHoje = Timestamp.fromDate(amanha);
   
   const col = collection(db, 'agendamentos');
-<<<<<<< HEAD
-  
-  let q = query(
-    col, 
-=======
   let q = query(
     col,
->>>>>>> 96fc4f0 (adicionando mais backed)
     where('empresaId', '==', empresaId),
     where('data', '>=', inicioHoje),
     where('data', '<', fimHoje),
@@ -175,19 +168,6 @@ async function fetchAgendamentosHoje(empresaId: string, funcionarioId?: string):
   }
   
   const snapshot = await getDocs(q);
-<<<<<<< HEAD
-  const agendamentos: Agendamento[] = [];
-  
-  snapshot.forEach(doc => {
-    const data = doc.data() as Omit<Agendamento, 'id'>;
-    agendamentos.push({ 
-      id: doc.id, 
-      ...data 
-    });
-  });
-  
-  return agendamentos.sort((a, b) => a.horaInicio.localeCompare(b.horaInicio));
-=======
   const agendamentos: AgendamentoSimplificado[] = [];
   
   snapshot.forEach(doc => {
@@ -201,7 +181,6 @@ async function fetchAgendamentosHoje(empresaId: string, funcionarioId?: string):
   });
   
   return agendamentos.sort((a, b) => a.horario.localeCompare(b.horario));
->>>>>>> 96fc4f0 (adicionando mais backed)
 }
 
 // Função para obter os meses do semestre atual e os dados correspondentes
@@ -215,27 +194,6 @@ function getSemestreData(receitas: number[], mesSelecionado: number) {
   };
 }
 
-// Novo componente para o gráfico do semestre atual
-const ReceitaChartSemestreAtual = ({ receitas, mesSelecionado, options }: { receitas: number[], mesSelecionado: number, options: any }) => {
-  const { meses: mesesSemestre, receitas: receitasSemestre } = getSemestreData(receitas, mesSelecionado);
-  const data = {
-    labels: mesesSemestre,
-    datasets: [
-      {
-        label: 'Receita',
-        data: receitasSemestre,
-        borderColor: '#fff',
-        backgroundColor: 'rgba(255,255,255,0.1)',
-        tension: 0.4,
-        fill: true,
-      },
-    ],
-  };
-  return (
-    <Line data={data} options={{ ...options, scales: { ...options.scales, y: { ...options.scales.y, ticks: { ...options.scales.y.ticks, stepSize: 1000 } } }, maintainAspectRatio: false }} style={{ width: '100%', height: '100%' }} />
-  );
-};
-
 // Função utilitária para gerar opções de semestre
 function gerarSemestres(anos: number[]): { label: string, ano: number, semestre: 1 | 2 }[] {
   return anos.flatMap(ano => [
@@ -247,29 +205,11 @@ function gerarSemestres(anos: number[]): { label: string, ano: number, semestre:
 export default function Home() {
   const { id: userId } = useUserContext();
   const [empresaId, setEmpresaId] = useState<string>('');
-<<<<<<< HEAD
-=======
   const [funcionarioSelecionado, setFuncionarioSelecionado] = useState<string>('');
-  
-  // Receita Semestre
->>>>>>> 96fc4f0 (adicionando mais backed)
   const [anos] = useState(() => {
     const atual = getAnoAtual();
     return [atual, atual - 1, atual - 2];
   });
-<<<<<<< HEAD
-  const [semestreSelecionado, setSemestreSelecionado] = useState(() => {
-    const ano = getAnoAtual();
-    const semestre = getMesAtual() < 6 ? 1 : 2;
-    return { ano, semestre };
-  });
-  const [receitas, setReceitas] = useState<number[]>(Array(12).fill(0));
-  const [agendamentos, setAgendamentos] = useState<Agendamento[]>([]);
-  const [funcionarioSelecionado, setFuncionarioSelecionado] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [loadingAgenda, setLoadingAgenda] = useState(true);
-
-=======
   const [anoSelecionado, setAnoSelecionado] = useState(getAnoAtual());
   const [semestreSelecionado, setSemestreSelecionado] = useState<{ ano: number; semestre: number }>({
     ano: getAnoAtual(),
@@ -288,12 +228,13 @@ export default function Home() {
   const handleOpenFiltro = (event: React.MouseEvent<HTMLElement>) => {
     setAnchorEl(event.currentTarget);
   };
+  
   const handleCloseFiltro = () => {
     setAnchorEl(null);
   };
+  
   const openFiltro = Boolean(anchorEl);
 
->>>>>>> 96fc4f0 (adicionando mais backed)
   // Buscar ID da empresa quando o userId mudar
   useEffect(() => {
     async function fetchEmpresaId() {
@@ -320,14 +261,10 @@ export default function Home() {
   useEffect(() => {
     if (!empresaId) return;
 
-<<<<<<< HEAD
-    setLoading(true);
-=======
     setLoadingReceita(true);
->>>>>>> 96fc4f0 (adicionando mais backed)
     fetchReceitaPorMes(semestreSelecionado.ano, empresaId).then(receitas => {
       setReceitas(receitas);
-      setLoading(false);
+      setLoadingReceita(false);
     });
   }, [semestreSelecionado, empresaId]);
 
@@ -336,34 +273,16 @@ export default function Home() {
     if (!empresaId) return;
 
     setLoadingAgenda(true);
-<<<<<<< HEAD
-    fetchAgendamentosHoje(empresaId, funcionarioSelecionado || undefined).then(agendamentos => {
-      setAgendamentos(agendamentos);
-=======
     Promise.all([
-      fetchFuncionarios(),
+      fetchFuncionarios(empresaId),
       fetchAgendamentosHoje(empresaId, funcionarioSelecionado || undefined)
     ]).then(([funcs, ags]) => {
       setFuncionarios(funcs);
       setAgendamentos(ags);
->>>>>>> 96fc4f0 (adicionando mais backed)
       setLoadingAgenda(false);
     });
   }, [empresaId, funcionarioSelecionado]);
 
-<<<<<<< HEAD
-  // Receita total do semestre selecionado
-  const start = semestreSelecionado.semestre === 1 ? 0 : 6;
-  const end = semestreSelecionado.semestre === 1 ? 6 : 12;
-  const receitaSemestre = receitas.slice(start, end).reduce((acc, v) => acc + v, 0);
-
-  const options = {
-    responsive: true,
-    plugins: {
-      legend: { display: false },
-      title: { display: false },
-    },
-=======
   const semestresOpcoes = gerarSemestres(anos);
   const start = semestreSelecionado.semestre === 1 ? 0 : 6;
   const end = semestreSelecionado.semestre === 1 ? 6 : 12;
@@ -374,19 +293,12 @@ export default function Home() {
   const options = {
     responsive: true,
     plugins: { legend: { display: false }, title: { display: false } },
->>>>>>> 96fc4f0 (adicionando mais backed)
     scales: {
       x: { ticks: { color: '#fff' }, grid: { color: '#444' } },
       y: { ticks: { color: '#fff' }, grid: { color: '#444' } },
     },
-<<<<<<< HEAD
-  };
-
-  const semestresOpcoes = gerarSemestres(anos);
-=======
     maintainAspectRatio: false,
   };
->>>>>>> 96fc4f0 (adicionando mais backed)
 
   return (
     <Box sx={{ width: '100%', maxWidth: '100%', height: '100vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
@@ -418,20 +330,26 @@ export default function Home() {
                 </FormControl>
               </CardHeader>
               <Typography variant="h4" mb={2} fontWeight={600} sx={{ fontSize: { xs: '1.6rem', sm: '2.2rem', md: '2.5rem' } }}>
-<<<<<<< HEAD
-                {loading ? 'Carregando...' : receitaSemestre.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-=======
-                {loadingReceita ? 'Carregando...' : receitasSemestre.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
->>>>>>> 96fc4f0 (adicionando mais backed)
+                {loadingReceita ? 'Carregando...' : receitaTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
               </Typography>
               <Box sx={{ width: '100%', flex: 1, height: '100%', minHeight: 0, overflow: 'hidden' }}>
-                <ReceitaChartSemestreAtual
-                  receitas={receitas}
-                  mesSelecionado={semestreSelecionado.semestre === 1 ? 0 : 6}
+                <Line
+                  data={{
+                    labels: mesesSemestre,
+                    datasets: [
+                      {
+                        label: 'Receita',
+                        data: receitasSemestre,
+                        borderColor: '#fff',
+                        backgroundColor: 'rgba(255,255,255,0.1)',
+                        tension: 0.4,
+                        fill: true,
+                      },
+                    ],
+                  }}
                   options={options}
+                  style={{ width: '100%', height: '100%' }}
                 />
-<<<<<<< HEAD
-=======
               </Box>
             </CardContent>
           </Card>
@@ -450,16 +368,11 @@ export default function Home() {
                     MenuProps={{ PaperProps: { sx: { background: '#222', color: '#fff' } } }}
                   >
                     <MenuItem value="">Todos</MenuItem>
-                    {agendamentos
-                      .filter((a, index, self) => 
-                        index === self.findIndex(b => b.funcionario === a.funcionario)
-                      )
-                      .map(a => (
-                        <MenuItem key={a.funcionario} value={a.funcionario}>
-                          {a.funcionario}
-                        </MenuItem>
-                      ))
-                    }
+                    {funcionarios.map(func => (
+                      <MenuItem key={func.id} value={func.id}>
+                        {func.nome}
+                      </MenuItem>
+                    ))}
                   </StyledSelect>
                 </FormControl>
               </CardHeader>
@@ -467,154 +380,9 @@ export default function Home() {
                 <DataTable
                   columns={["Horário", "Cliente", "Serviço"]}
                   rows={agendamentos.map(a => [
-                    `${a.horario}`,
+                    a.horario,
                     a.cliente,
                     a.servico
-                  ])}
-                  loading={loadingAgenda}
-                  emptyMessage="Nenhum agendamento para hoje"
-                />
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
-      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-        {/* Card Receita Semestre */}
-        <Card sx={{ background: '#222', color: '#fff', borderRadius: 4, minWidth: 350, flex: 1, minHeight: 400, display: 'flex', flexDirection: 'column' }}>
-          <CardContent sx={{ p: 4, flex: 1, display: 'flex', flexDirection: 'column' }}>
-            <CardHeader>
-              <Typography variant="h6" color="#aaa" sx={{ fontSize: theme => `calc(${theme.typography.h6.fontSize} + 7px)` }}>Receita Semestre</Typography>
-              <Button
-                variant="outlined"
-                sx={{ color: '#fff', borderColor: '#fff', textTransform: 'none', bgcolor: '#222', '&:hover': { bgcolor: '#333' } }}
-                onClick={handleOpenFiltro}
-              >
-                Filtros
-              </Button>
-              <Popover
-                open={openFiltro}
-                anchorEl={anchorEl}
-                onClose={handleCloseFiltro}
-                anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
-              >
-                <Box sx={{ p: 2, minWidth: 220 }}>
-                  <FormControl size="small" sx={{ mb: 2, minWidth: 120 }}>
-                    <InputLabel sx={{ color: '#fff' }}>Ano</InputLabel>
-                    <Select
-                      value={anoSelecionado}
-                      label="Ano"
-                      onChange={e => setAnoSelecionado(Number(e.target.value))}
-                      sx={{ color: '#fff' }}
-                    >
-                      {anos.map(ano => (
-                        <MenuItem value={ano} key={ano}>{ano}</MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                  <FormControl size="small" sx={{ minWidth: 120 }}>
-                    <InputLabel sx={{ color: '#fff' }}>Semestre</InputLabel>
-                    <Select
-                      value={semestreSelecionado.semestre}
-                      label="Semestre"
-                      onChange={e => setSemestreSelecionado(prev => ({ ...prev, semestre: Number(e.target.value) }))}
-                      sx={{ color: '#fff' }}
-                    >
-                      <MenuItem value={1}>1º Semestre</MenuItem>
-                      <MenuItem value={2}>2º Semestre</MenuItem>
-                    </Select>
-                  </FormControl>
-                </Box>
-              </Popover>
-            </CardHeader>
-            <Typography variant="h4" mb={2} fontWeight={600} sx={{ fontSize: { xs: '1.6rem', sm: '2.2rem', md: '2.5rem' } }}>
-              {loadingReceita ? 'Carregando...' : receitaTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-            </Typography>
-            <Box sx={{ width: '100%', flex: 1, height: 260, minHeight: 0, overflow: 'hidden' }}>
-              <Line
-                data={{
-                  labels: mesesSemestre,
-                  datasets: [
-                    {
-                      label: 'Receita',
-                      data: receitasSemestre,
-                      borderColor: '#fff',
-                      backgroundColor: 'rgba(255,255,255,0.1)',
-                      tension: 0.4,
-                      fill: true,
-                    },
-                  ],
-                }}
-                options={{
-                  responsive: true,
-                  plugins: { legend: { display: false }, title: { display: false } },
-                  scales: {
-                    x: { ticks: { color: '#fff' }, grid: { color: '#444' } },
-                    y: { ticks: { color: '#fff' }, grid: { color: '#444' } },
-                  },
-                  maintainAspectRatio: false,
-                }}
-                style={{ width: '100%', height: '100%' }}
-              />
-            </Box>
-          </CardContent>
-        </Card>
-        {/* Card Agenda Hoje */}
-        <Card sx={{ background: '#222', color: '#fff', borderRadius: 4, minWidth: 350, flex: 2, minHeight: 400, display: 'flex', flexDirection: 'column' }}>
-          <CardContent sx={{ p: 4, flex: 1, display: 'flex', flexDirection: 'column' }}>
-            <CardHeader>
-              <Typography variant="h6" color="#aaa" sx={{ fontSize: theme => `calc(${theme.typography.h6.fontSize} + 7px)` }}>Agenda Hoje</Typography>
-            </CardHeader>
-            <Box sx={{ flex: 1, bgcolor: '#181818', borderRadius: 3, p: 2, display: 'flex', flexDirection: 'column', minHeight: 0, overflowX: 'auto' }}>
-              {/* Cabeçalho dos nomes dos funcionários com coluna de horários */}
-              <Box sx={{ display: 'grid', gridTemplateColumns: `80px repeat(${funcionarios.length}, 1fr)`, mb: 0.5 }}>
-                <Box sx={{ bgcolor: '#111', p: 1, textAlign: 'center', borderTopLeftRadius: 12 }}>
-                  <Typography fontWeight={700} fontSize={15}>Horário</Typography>
-                </Box>
-                {funcionarios.map((func, idx) => (
-                  <Box key={func.id} sx={{ bgcolor: '#111', p: 1, textAlign: 'center', borderTopRightRadius: idx === funcionarios.length - 1 ? 12 : 0 }}>
-                    <Typography fontWeight={700} fontSize={15}>{func.nome}</Typography>
-                  </Box>
-                ))}
->>>>>>> 96fc4f0 (adicionando mais backed)
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid item xs={12} md={6} sx={{ height: '100%' }}>
-          <Card sx={{ background: '#222', color: '#fff', borderRadius: 4, minHeight: 200, height: 500, display: 'flex', flexDirection: 'column', position: 'relative' }}>
-            <CardContent sx={{ p: 4, flex: 1, display: 'flex', flexDirection: 'column', pb: 4 }}>
-              <CardHeader>
-                <Typography variant="h6" color="#aaa" sx={{ fontSize: theme => `calc(${theme.typography.h6.fontSize} + 7px)` }}>Agenda Hoje</Typography>
-                <FormControl size="small" sx={{ minWidth: 120 }}>
-                  <InputLabel sx={{ color: '#fff' }}>Funcionário</InputLabel>
-                  <StyledSelect
-                    value={funcionarioSelecionado}
-                    label="Funcionário"
-                    onChange={(e) => setFuncionarioSelecionado(e.target.value as string)}
-                    MenuProps={{ PaperProps: { sx: { background: '#222', color: '#fff' } } }}
-                  >
-                    <MenuItem value="">Todos</MenuItem>
-                    {agendamentos
-                      .filter((a, index, self) => 
-                        index === self.findIndex(b => b.funcionarioId === a.funcionarioId)
-                      )
-                      .map(a => (
-                        <MenuItem key={a.funcionarioId} value={a.funcionarioId}>
-                          {a.funcionarioId}
-                        </MenuItem>
-                      ))
-                    }
-                  </StyledSelect>
-                </FormControl>
-              </CardHeader>
-              <Box sx={{ width: '100%', flex: 1 }}>
-                <DataTable
-                  columns={["Horário", "Cliente", "Serviço"]}
-                  rows={agendamentos.map(a => [
-                    `${a.horaInicio} - ${a.horaFim}`,
-                    a.clienteId,
-                    a.servico.nome
                   ])}
                   loading={loadingAgenda}
                   emptyMessage="Nenhum agendamento para hoje"
