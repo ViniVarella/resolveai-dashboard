@@ -483,7 +483,7 @@ export default function Home() {
                     position: 'relative'
                   }}
                 >
-                  {horas.map((hora, rowIdx) => {
+                  {horas.map((hora) => {
                     const horaNum = parseInt(hora.split(':')[0]);
                     const cells = [
                       <Box 

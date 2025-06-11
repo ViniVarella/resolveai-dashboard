@@ -1,7 +1,7 @@
-import { Box, Typography, Card, CardContent, FormControl, InputLabel, Select, MenuItem, Checkbox, ListItemText, OutlinedInput, IconButton, Popover, Button } from '@mui/material';
+import { Box, Typography, Card, CardContent, FormControl, InputLabel, Select, MenuItem, Checkbox, Popover, Button } from '@mui/material';
 import { useEffect, useState } from 'react';
 import { db } from '../lib/firebase';
-import { collection, getDocs, query, where, Timestamp, doc, getDoc } from 'firebase/firestore';
+import { collection, getDocs, query, where, Timestamp} from 'firebase/firestore';
 import { Line, Bar } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
@@ -39,11 +39,6 @@ const meses = [
 
 function getAnoAtual() {
   return new Date().getFullYear();
-}
-
-interface Empresa {
-  id: string;
-  funcionarios: string[];
 }
 
 interface Agendamento {
@@ -185,10 +180,7 @@ export default function Statistics() {
   const { id: userId } = useUser();
   
   // Receita anual
-  const [anos, setAnos] = useState(() => {
-    const atual = getAnoAtual();
-    return [atual, atual - 1, atual - 2];
-  });
+  const anos = [getAnoAtual(), getAnoAtual() - 1, getAnoAtual() - 2];
   const [anoSelecionado, setAnoSelecionado] = useState(getAnoAtual());
   const [receitas, setReceitas] = useState<number[]>(Array(12).fill(0));
   const [receitaTotal, setReceitaTotal] = useState(0);

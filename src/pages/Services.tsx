@@ -1,4 +1,4 @@
-import { Box, Button, Card, CardContent, Grid, IconButton, TextField, Typography, Dialog, DialogTitle, DialogContent, DialogActions, Fab, Tooltip, CircularProgress, FormControlLabel, Switch, Radio, RadioGroup, FormControl, FormLabel, Chip, Avatar, Alert, Select, MenuItem, InputLabel, OutlinedInput } from '@mui/material';
+import { Box, Button, Card, CardContent, Grid, IconButton, TextField, Typography, Dialog, DialogTitle, DialogContent, DialogActions, Fab, Tooltip, FormControl,Chip, Avatar, Select, MenuItem, InputLabel, OutlinedInput, CircularProgress } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import CloseIcon from '@mui/icons-material/Close';
 import CheckIcon from '@mui/icons-material/Check';
@@ -7,7 +7,7 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import ImageIcon from '@mui/icons-material/Image';
 import { useEffect, useState, useRef } from 'react';
 import { db, storage } from '../lib/firebase';
-import { collection, getDocs, doc, updateDoc, getDoc, query, where, Timestamp, arrayUnion } from 'firebase/firestore';
+import { collection, getDocs, doc, updateDoc, getDoc, query, where, Timestamp} from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { useUser } from '../contexts/UserContext';
 import { v4 as uuidv4 } from 'uuid';
@@ -44,8 +44,6 @@ const TIPOS_SERVICO = [
   'pagamento no final'
 ] as const;
 
-type TipoServico = typeof TIPOS_SERVICO[number];
-
 const initialNovoServico: Omit<Servico, 'id' | 'createdAt' | 'updatedAt'> = {
   categoria: '',
   nome: '',
@@ -81,8 +79,6 @@ export default function Services() {
   const [categorias, setCategorias] = useState<string[]>([]);
   const [funcionarios, setFuncionarios] = useState<Funcionario[]>([]);
   const [selectedFuncionarios, setSelectedFuncionarios] = useState<Funcionario[]>([]);
-  const [openFuncionarios, setOpenFuncionarios] = useState(false);
-  const [openCategorias, setOpenCategorias] = useState(false);
   const [imagens, setImagens] = useState<File[]>([]);
   const [uploadedImageUrls, setUploadedImageUrls] = useState<string[]>([]);
   const [isDeletingImage, setIsDeletingImage] = useState<number | null>(null);
@@ -405,6 +401,11 @@ export default function Services() {
       <Typography variant="h4" fontWeight={600} mb={3}>
         Serviços
       </Typography>
+      {error && (
+        <Typography color="error" sx={{ mb: 2, p: 1, bgcolor: 'rgba(255,0,0,0.1)', borderRadius: 1 }}>
+          {error}
+        </Typography>
+      )}
       {servicos.length === 0 && !loading ? (
         <Box sx={{ 
           display: 'flex', 
@@ -668,7 +669,13 @@ export default function Services() {
                       </Box>
                       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, mt: 1 }}>
                         <Box>
-                          <IconButton onClick={handleSave} sx={{ color: 'lightgreen' }}><CheckIcon /></IconButton>
+                          <IconButton 
+                            onClick={handleSave} 
+                            disabled={isSaving}
+                            sx={{ color: 'lightgreen' }}
+                          >
+                            {isSaving ? <CircularProgress size={24} color="inherit" /> : <CheckIcon />}
+                          </IconButton>
                           <IconButton onClick={handleCancel} sx={{ color: 'tomato' }}><CloseIcon /></IconButton>
                         </Box>
                         <IconButton onClick={() => handleDelete(servico.id)} sx={{ color: 'red', bgcolor: '#222', '&:hover': { bgcolor: '#333' } }}>

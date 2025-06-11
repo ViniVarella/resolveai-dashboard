@@ -7,7 +7,7 @@ import { ptBR } from 'date-fns/locale';
 import { db } from '../lib/firebase';
 import { collection, query, where, getDocs, doc, getDoc, Timestamp } from 'firebase/firestore';
 import { useUser } from '../contexts/UserContext';
-import { format, isSameDay, parseISO } from 'date-fns';
+import { isSameDay} from 'date-fns';
 
 const CardHeader = styled(Box)({
   display: 'flex',
@@ -22,7 +22,6 @@ const StyledSelect = styled(Select)({
   '& .MuiOutlinedInput-notchedOutline': { borderColor: '#fff' }
 });
 
-const diasSemana = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
 const diasSemanaAbrev = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 const horas = Array.from({ length: 11 }, (_, i) => `${(8 + i).toString().padStart(2, '0')}:00`); // 08:00 às 18:00
 
@@ -63,11 +62,6 @@ interface Agendamento {
   horaInicio: string;
   horaFim: string;
   status: string;
-}
-
-interface Empresa {
-  id: string;
-  funcionarios: string[];
 }
 
 export default function Schedule() {
@@ -482,8 +476,7 @@ export default function Schedule() {
                 position: 'relative'
               }}
             >
-              {horas.map((hora, rowIdx) => {
-                const horaNum = parseInt(hora.split(':')[0]);
+              {horas.map((hora) => {
                 const cells = [
                   <Box 
                     key={`${hora}-hora`} 
