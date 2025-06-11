@@ -1,4 +1,5 @@
-import { Paper, PaperProps } from '@mui/material';
+import { Paper } from '@mui/material';
+import type { PaperProps } from '@mui/material';
 
 export default function DashboardCard({ children, ...props }: PaperProps) {
   return (

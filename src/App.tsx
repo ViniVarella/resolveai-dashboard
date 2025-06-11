@@ -25,27 +25,27 @@ function AppContent() {
   const isLoginPage = location.pathname === '/login' || location.pathname === '/register';
 
   return (
-    <Box sx={{ display: 'flex', height: '100vh', bgcolor: 'background.default' }}>
+      <Box sx={{ display: 'flex', height: '100vh', bgcolor: 'background.default' }}>
       {!isLoginPage && <Sidebar open={sidebarOpen} setOpen={setSidebarOpen} />}
-      <Box sx={{ 
-        flex: 1, 
-        display: 'flex', 
-        flexDirection: 'column',
-        width: '100%',
-        minWidth: 0,
-        transition: 'all 0.2s'
-      }}>
-        {!isLoginPage && <Header open={sidebarOpen} sidebarWidth={currentWidth} />}
-        <Box 
-          component="main" 
-          sx={{ 
-            flex: 1, 
+        <Box sx={{ 
+          flex: 1, 
+          display: 'flex', 
+          flexDirection: 'column',
+          width: '100%',
+          minWidth: 0,
+          transition: 'all 0.2s'
+        }}>
+        {!isLoginPage && <Header sidebarWidth={currentWidth} />}
+          <Box 
+            component="main" 
+            sx={{ 
+              flex: 1, 
             p: !isLoginPage ? 3 : 0, 
-            overflow: 'auto', 
+              overflow: 'auto', 
             mt: !isLoginPage ? '80px' : 0,
-          }}
-        >
-          <Routes>
+            }}
+          >
+            <Routes>
             <Route path="/" element={<Navigate to="/login" />} />
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
@@ -55,10 +55,10 @@ function AppContent() {
             <Route path="/employees" element={<PrivateRoute><Employees /></PrivateRoute>} />
             <Route path="/schedule" element={<PrivateRoute><Schedule /></PrivateRoute>} />
             <Route path="/statistics" element={<PrivateRoute><Statistics /></PrivateRoute>} />
-          </Routes>
+            </Routes>
+          </Box>
         </Box>
       </Box>
-    </Box>
   );
 }
 

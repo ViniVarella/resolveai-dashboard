@@ -1,4 +1,4 @@
-import { Box, Grid, Typography, Card, CardContent, IconButton, TextField, Fab, Tooltip, Dialog, DialogTitle, DialogContent, DialogActions, Button, MenuItem, Select, InputLabel, FormControl } from '@mui/material';
+import { Box, Grid, Typography, Card, CardContent, IconButton, TextField, Fab, Tooltip, Dialog, DialogTitle, DialogContent, DialogActions, Button } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import CloseIcon from '@mui/icons-material/Close';
 import CheckIcon from '@mui/icons-material/Check';
@@ -27,13 +27,11 @@ export default function Employees() {
   const [funcionarios, setFuncionarios] = useState<Funcionario[]>([]);
   const [editId, setEditId] = useState<string | null>(null);
   const [editData, setEditData] = useState<Partial<Funcionario>>({});
-  const [loading, setLoading] = useState(true);
   const [openNovo, setOpenNovo] = useState(false);
   const [novoFuncionario, setNovoFuncionario] = useState<Omit<Funcionario, 'id'>>(initialNovoFuncionario);
 
   useEffect(() => {
     async function fetchFuncionarios() {
-      setLoading(true);
       // Buscar empresa (assumindo apenas uma empresa, id 'empresa1')
       const empresaDoc = await getDoc(doc(db, 'empresas', 'empresa1'));
       const empresaData = empresaDoc.data();
@@ -45,7 +43,6 @@ export default function Employees() {
         .filter(doc => ids.includes(doc.id))
         .map(doc => ({ id: doc.id, ...doc.data() } as Funcionario));
       setFuncionarios(users);
-      setLoading(false);
     }
     fetchFuncionarios();
   }, []);

@@ -36,7 +36,6 @@ function getWeekRange(date: Date) {
 function formatWeekLabel(days: Date[]) {
   const first = days[0];
   const last = days[6];
-  const options: Intl.DateTimeFormatOptions = { day: '2-digit', month: 'short' };
   return `${first.getDate().toString().padStart(2, '0')}–${last.getDate().toString().padStart(2, '0')} de ${last.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}`;
 }
 
@@ -124,8 +123,8 @@ export default function Schedule() {
             </Box>
             {/* Linhas de horas */}
             <Box sx={{ flex: 1, display: 'grid', gridTemplateRows: `repeat(${horas.length}, 1fr)`, gridTemplateColumns: 'repeat(7, 1fr)', gap: 0, height: '100%' }}>
-              {horas.map((hora, rowIdx) => (
-                weekDays.map((d, colIdx) => (
+              {horas.map((hora) => (
+                weekDays.map((_, colIdx) => (
                   <Box key={hora + '-' + colIdx} sx={{ border: '1px solid #222', minHeight: 40, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, color: '#888' }}>
                     {/* Aqui futuramente exibir agendamentos */}
                   </Box>
