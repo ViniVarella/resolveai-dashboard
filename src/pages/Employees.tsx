@@ -14,7 +14,15 @@ interface Funcionario {
   nome: string;
   telefone: string;
   email: string;
-  servicosHabilitados: string[];
+  senha: string;
+  tipoUsuario: string;
+  endereco: {
+    cep: string;
+    cidade: string;
+    complemento: string;
+    numero: string;
+    rua: string;
+  };
 }
 
 interface Empresa {
@@ -26,7 +34,15 @@ const initialNovoFuncionario: Omit<Funcionario, 'id'> = {
   nome: '',
   telefone: '',
   email: '',
-  servicosHabilitados: [],
+  senha: '',
+  tipoUsuario: 'Funcionario',
+  endereco: {
+    cep: '',
+    cidade: '',
+    complemento: '',
+    numero: '',
+    rua: ''
+  }
 };
 
 export default function Employees() {
@@ -140,7 +156,9 @@ export default function Employees() {
         nome: editData.nome,
         telefone: editData.telefone,
         email: editData.email,
-        servicosHabilitados: editData.servicosHabilitados,
+        senha: editData.senha,
+        tipoUsuario: editData.tipoUsuario,
+        endereco: editData.endereco
       });
       setFuncionarios(funcionarios.map(f => f.id === editId ? { ...f, ...editData } as Funcionario : f));
       setEditId(null);
@@ -285,13 +303,6 @@ export default function Employees() {
                         sx={{ mb: 1, input: { color: '#fff' }, label: { color: '#aaa' } }}
                       />
                       <TextField
-                        label="Telefone"
-                        value={editData.telefone}
-                        onChange={e => handleChange('telefone', e.target.value)}
-                        fullWidth
-                        sx={{ mb: 1, input: { color: '#fff' }, label: { color: '#aaa' } }}
-                      />
-                      <TextField
                         label="Email"
                         value={editData.email}
                         onChange={e => handleChange('email', e.target.value)}
@@ -299,9 +310,53 @@ export default function Employees() {
                         sx={{ mb: 1, input: { color: '#fff' }, label: { color: '#aaa' } }}
                       />
                       <TextField
-                        label="Serviços Habilitados"
-                        value={editData.servicosHabilitados?.join(', ')}
-                        onChange={e => handleChange('servicosHabilitados', e.target.value.split(',').map((s: string) => s.trim()))}
+                        label="Senha"
+                        type="password"
+                        value={editData.senha}
+                        onChange={e => handleChange('senha', e.target.value)}
+                        fullWidth
+                        sx={{ mb: 1, input: { color: '#fff' }, label: { color: '#aaa' } }}
+                      />
+                      <TextField
+                        label="Telefone"
+                        value={editData.telefone}
+                        onChange={e => handleChange('telefone', e.target.value)}
+                        fullWidth
+                        sx={{ mb: 1, input: { color: '#fff' }, label: { color: '#aaa' } }}
+                      />
+                      <Typography variant="subtitle1" sx={{ color: '#aaa', mt: 2, mb: 1 }}>Endereço</Typography>
+                      <TextField
+                        label="CEP"
+                        value={editData.endereco?.cep}
+                        onChange={e => handleChange('endereco', { ...editData.endereco, cep: e.target.value })}
+                        fullWidth
+                        sx={{ mb: 1, input: { color: '#fff' }, label: { color: '#aaa' } }}
+                      />
+                      <TextField
+                        label="Cidade"
+                        value={editData.endereco?.cidade}
+                        onChange={e => handleChange('endereco', { ...editData.endereco, cidade: e.target.value })}
+                        fullWidth
+                        sx={{ mb: 1, input: { color: '#fff' }, label: { color: '#aaa' } }}
+                      />
+                      <TextField
+                        label="Rua"
+                        value={editData.endereco?.rua}
+                        onChange={e => handleChange('endereco', { ...editData.endereco, rua: e.target.value })}
+                        fullWidth
+                        sx={{ mb: 1, input: { color: '#fff' }, label: { color: '#aaa' } }}
+                      />
+                      <TextField
+                        label="Número"
+                        value={editData.endereco?.numero}
+                        onChange={e => handleChange('endereco', { ...editData.endereco, numero: e.target.value })}
+                        fullWidth
+                        sx={{ mb: 1, input: { color: '#fff' }, label: { color: '#aaa' } }}
+                      />
+                      <TextField
+                        label="Complemento"
+                        value={editData.endereco?.complemento}
+                        onChange={e => handleChange('endereco', { ...editData.endereco, complemento: e.target.value })}
                         fullWidth
                         sx={{ mb: 1, input: { color: '#fff' }, label: { color: '#aaa' } }}
                       />
@@ -318,9 +373,14 @@ export default function Employees() {
                   ) : (
                     <>
                       <Typography variant="h5" color="#aaa" mb={1}>{func.nome}</Typography>
-                      <Typography><b>Telefone:</b> {func.telefone}</Typography>
                       <Typography><b>Email:</b> {func.email}</Typography>
-                      <Typography><b>Serviços Habilitados:</b> {func.servicosHabilitados?.join(', ') || 'Nenhum'}</Typography>
+                      <Typography><b>Telefone:</b> {func.telefone}</Typography>
+                      <Typography><b>Endereço:</b></Typography>
+                      <Typography sx={{ pl: 2 }}><b>CEP:</b> {func.endereco?.cep}</Typography>
+                      <Typography sx={{ pl: 2 }}><b>Cidade:</b> {func.endereco?.cidade}</Typography>
+                      <Typography sx={{ pl: 2 }}><b>Rua:</b> {func.endereco?.rua}</Typography>
+                      <Typography sx={{ pl: 2 }}><b>Número:</b> {func.endereco?.numero}</Typography>
+                      <Typography sx={{ pl: 2 }}><b>Complemento:</b> {func.endereco?.complemento || 'Nenhum'}</Typography>
                       <IconButton onClick={() => handleEdit(func)} sx={{ position: 'absolute', top: 16, right: 16, bgcolor: '#444', color: '#fff', '&:hover': { bgcolor: '#555' } }}>
                         <EditIcon />
                       </IconButton>
@@ -363,13 +423,6 @@ export default function Employees() {
             sx={{ mb: 2 }}
           />
           <TextField
-            label="Telefone"
-            value={novoFuncionario.telefone}
-            onChange={e => handleNovoChange('telefone', e.target.value)}
-            fullWidth
-            sx={{ mb: 2 }}
-          />
-          <TextField
             label="Email"
             value={novoFuncionario.email}
             onChange={e => handleNovoChange('email', e.target.value)}
@@ -377,12 +430,55 @@ export default function Employees() {
             sx={{ mb: 2 }}
           />
           <TextField
-            label="Serviços Habilitados"
-            value={novoFuncionario.servicosHabilitados.join(', ')}
-            onChange={e => handleNovoChange('servicosHabilitados', e.target.value.split(',').map((s: string) => s.trim()))}
+            label="Senha"
+            type="password"
+            value={novoFuncionario.senha}
+            onChange={e => handleNovoChange('senha', e.target.value)}
             fullWidth
             sx={{ mb: 2 }}
-            helperText="Digite os IDs dos serviços separados por vírgula"
+          />
+          <TextField
+            label="Telefone"
+            value={novoFuncionario.telefone}
+            onChange={e => handleNovoChange('telefone', e.target.value)}
+            fullWidth
+            sx={{ mb: 2 }}
+          />
+          <Typography variant="subtitle1" sx={{ mt: 2, mb: 1 }}>Endereço</Typography>
+          <TextField
+            label="CEP"
+            value={novoFuncionario.endereco.cep}
+            onChange={e => handleNovoChange('endereco', { ...novoFuncionario.endereco, cep: e.target.value })}
+            fullWidth
+            sx={{ mb: 2 }}
+          />
+          <TextField
+            label="Cidade"
+            value={novoFuncionario.endereco.cidade}
+            onChange={e => handleNovoChange('endereco', { ...novoFuncionario.endereco, cidade: e.target.value })}
+            fullWidth
+            sx={{ mb: 2 }}
+          />
+          <TextField
+            label="Rua"
+            value={novoFuncionario.endereco.rua}
+            onChange={e => handleNovoChange('endereco', { ...novoFuncionario.endereco, rua: e.target.value })}
+            fullWidth
+            sx={{ mb: 2 }}
+          />
+          <TextField
+            label="Número"
+            value={novoFuncionario.endereco.numero}
+            onChange={e => handleNovoChange('endereco', { ...novoFuncionario.endereco, numero: e.target.value })}
+            fullWidth
+            sx={{ mb: 2 }}
+          />
+          <TextField
+            label="Complemento"
+            value={novoFuncionario.endereco.complemento}
+            onChange={e => handleNovoChange('endereco', { ...novoFuncionario.endereco, complemento: e.target.value })}
+            fullWidth
+            sx={{ mb: 2 }}
           />
         </DialogContent>
         <DialogActions>

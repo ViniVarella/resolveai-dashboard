@@ -1,13 +1,21 @@
-import { Box, Button, Card, CardContent, Grid, IconButton, TextField, Typography, Dialog, DialogTitle, DialogContent, DialogActions, Fab, Tooltip } from '@mui/material';
+import { Box, Button, Card, CardContent, Grid, IconButton, TextField, Typography, Dialog, DialogTitle, DialogContent, DialogActions, Fab, Tooltip, CircularProgress, FormControlLabel, Switch, Radio, RadioGroup, FormControl, FormLabel, Chip, Avatar, Alert, Select, MenuItem, InputLabel, OutlinedInput } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import CloseIcon from '@mui/icons-material/Close';
 import CheckIcon from '@mui/icons-material/Check';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
-import { useEffect, useState } from 'react';
-import { db } from '../lib/firebase';
-import { collection, getDocs, doc, updateDoc, getDoc, query, where, Timestamp } from 'firebase/firestore';
+import ImageIcon from '@mui/icons-material/Image';
+import { useEffect, useState, useRef } from 'react';
+import { db, storage } from '../lib/firebase';
+import { collection, getDocs, doc, updateDoc, getDoc, query, where, Timestamp, arrayUnion } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { useUser } from '../contexts/UserContext';
+import { v4 as uuidv4 } from 'uuid';
+
+interface Funcionario {
+  id: string;
+  nome: string;
+}
 
 interface Servico {
   id: string;
@@ -20,14 +28,23 @@ interface Servico {
   ValorFinalMuda: boolean;
   createdAt: Timestamp;
   updatedAt: Timestamp;
-  imagensUrl?: string[];
-  funcionariosIds?: string[];
+  imagensUrl: string[];
+  funcionariosIds: string[];
 }
 
 interface Empresa {
   id: string;
   servicos: Servico[];
+  categorias: string[];
+  funcionarios: string[];
 }
+
+const TIPOS_SERVICO = [
+  'pagamento no inicio',
+  'pagamento no final'
+] as const;
+
+type TipoServico = typeof TIPOS_SERVICO[number];
 
 const initialNovoServico: Omit<Servico, 'id' | 'createdAt' | 'updatedAt'> = {
   categoria: '',
@@ -37,6 +54,8 @@ const initialNovoServico: Omit<Servico, 'id' | 'createdAt' | 'updatedAt'> = {
   preco: 0,
   tipoServico: 'pagamento no final',
   ValorFinalMuda: true,
+  imagensUrl: [],
+  funcionariosIds: []
 };
 
 async function fetchEmpresaId(userId: string): Promise<string | null> {
@@ -59,6 +78,17 @@ export default function Services() {
   const [openNovo, setOpenNovo] = useState(false);
   const [novoServico, setNovoServico] = useState<Omit<Servico, 'id' | 'createdAt' | 'updatedAt'>>(initialNovoServico);
   const [empresaId, setEmpresaId] = useState<string | null>(null);
+  const [categorias, setCategorias] = useState<string[]>([]);
+  const [funcionarios, setFuncionarios] = useState<Funcionario[]>([]);
+  const [selectedFuncionarios, setSelectedFuncionarios] = useState<Funcionario[]>([]);
+  const [openFuncionarios, setOpenFuncionarios] = useState(false);
+  const [openCategorias, setOpenCategorias] = useState(false);
+  const [imagens, setImagens] = useState<File[]>([]);
+  const [uploadedImageUrls, setUploadedImageUrls] = useState<string[]>([]);
+  const [isDeletingImage, setIsDeletingImage] = useState<number | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     async function fetchEmpresa() {
@@ -77,7 +107,7 @@ export default function Services() {
       return id;
     }
 
-    async function fetchServicos() {
+    async function fetchData() {
       setLoading(true);
       try {
         const empresaId = await fetchEmpresa();
@@ -91,25 +121,96 @@ export default function Services() {
         
         if (empresaDoc.exists()) {
           const empresaData = empresaDoc.data() as Empresa;
-          setServicos(empresaData.servicos || []);
+          console.log('Dados da empresa:', empresaData); // Debug log
+          
+          // Garantir que servicos seja um array
+          const servicosArray = Array.isArray(empresaData.servicos) ? empresaData.servicos : [];
+          setServicos(servicosArray);
+
+          // Garantir que categorias seja um array e remover duplicatas
+          const categoriasArray = Array.isArray(empresaData.categorias) 
+            ? [...new Set(empresaData.categorias)] 
+            : [];
+          console.log('Categorias carregadas:', categoriasArray); // Debug log
+          setCategorias(categoriasArray);
+
+          // Buscar dados dos funcionários
+          const funcionariosCompletos: Funcionario[] = [];
+          const funcionariosIds = Array.isArray(empresaData.funcionarios) ? empresaData.funcionarios : [];
+          
+          for (const funcionarioId of funcionariosIds) {
+            const funcionarioRef = doc(db, 'users', funcionarioId);
+            const funcionarioDoc = await getDoc(funcionarioRef);
+            
+            if (funcionarioDoc.exists()) {
+              const funcionarioData = funcionarioDoc.data();
+              funcionariosCompletos.push({
+                id: funcionarioId,
+                nome: funcionarioData.nome || 'Funcionário sem nome'
+              });
+            }
+          }
+          setFuncionarios(funcionariosCompletos);
         } else {
           console.log('Documento da empresa não encontrado');
           setServicos([]);
+          setCategorias([]);
+          setFuncionarios([]);
         }
       } catch (error) {
-        console.error('Erro ao buscar serviços:', error);
+        console.error('Erro ao buscar dados:', error);
+        setError('Erro ao carregar dados da empresa');
         setServicos([]);
+        setCategorias([]);
+        setFuncionarios([]);
       } finally {
         setLoading(false);
       }
     }
 
-    fetchServicos();
+    fetchData();
   }, [userId]);
+
+  const handleImageSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (event.target.files) {
+      const newFiles = Array.from(event.target.files);
+      setImagens(prev => [...prev, ...newFiles]);
+    }
+  };
+
+  const handleDeleteImage = async (index: number) => {
+    if (!window.confirm('Deseja realmente deletar esta imagem?')) return;
+
+    try {
+      setIsDeletingImage(index);
+      
+      if (uploadedImageUrls[index]) {
+        const imageUrl = uploadedImageUrls[index];
+        const storagePath = decodeURIComponent(imageUrl.split('/o/')[1].split('?')[0]);
+        const imageRef = ref(storage, storagePath);
+        await deleteObject(imageRef);
+      }
+
+      setImagens(prev => prev.filter((_, i) => i !== index));
+      setUploadedImageUrls(prev => prev.filter((_, i) => i !== index));
+    } catch (error) {
+      console.error('Erro ao deletar imagem:', error);
+      setError('Erro ao deletar imagem');
+    } finally {
+      setIsDeletingImage(null);
+    }
+  };
 
   const handleEdit = (servico: Servico) => {
     setEditId(servico.id);
     setEditData({ ...servico });
+    // Carregar funcionários selecionados ao editar
+    const funcionariosSelecionados = funcionarios.filter(f => 
+      servico.funcionariosIds?.includes(f.id)
+    );
+    setSelectedFuncionarios(funcionariosSelecionados);
+    // Carregar URLs das imagens existentes
+    setUploadedImageUrls(servico.imagensUrl || []);
   };
 
   const handleCancel = () => {
@@ -124,32 +225,62 @@ export default function Services() {
   const handleSave = async () => {
     if (!editId || !empresaId) return;
 
+    if (!editData.categoria || !categorias.includes(editData.categoria)) {
+      setError('Categoria inválida');
+      return;
+    }
+
     try {
+      setIsSaving(true);
+      setError(null);
+
+      // Upload de novas imagens
+      const newUploadedImageUrls = [...uploadedImageUrls];
+      for (let i = 0; i < imagens.length; i++) {
+        const image = imagens[i];
+        if (uploadedImageUrls[i] === URL.createObjectURL(image)) continue;
+
+        const storageRef = ref(storage, `servicos/${userId}/${editData.nome}/${i + 1}`);
+        await uploadBytes(storageRef, image);
+        const downloadURL = await getDownloadURL(storageRef);
+        newUploadedImageUrls[i] = downloadURL;
+      }
+
       const empresaRef = doc(db, 'empresas', empresaId);
       const empresaDoc = await getDoc(empresaRef);
       
       if (!empresaDoc.exists()) {
-        console.error('Empresa não encontrada');
-        return;
+        throw new Error('Empresa não encontrada');
       }
 
       const empresaData = empresaDoc.data() as Empresa;
-      const servicosAtualizados = empresaData.servicos.map(s => 
-        s.id === editId 
-          ? { 
-              ...s, 
-              ...editData,
-              updatedAt: Timestamp.now()
-            } 
-          : s
-      );
+      // Garantir que servicos seja um array
+      const servicosAtualizados = Array.isArray(empresaData.servicos) 
+        ? empresaData.servicos.map(s => 
+            s.id === editId 
+              ? { 
+                  ...s, 
+                  ...editData,
+                  imagensUrl: newUploadedImageUrls,
+                  funcionariosIds: selectedFuncionarios.map(f => f.id),
+                  updatedAt: Timestamp.now()
+                } 
+              : s
+          )
+        : [];
 
       await updateDoc(empresaRef, { servicos: servicosAtualizados });
       setServicos(servicosAtualizados);
       setEditId(null);
       setEditData({});
+      setImagens([]);
+      setUploadedImageUrls([]);
+      setSelectedFuncionarios([]);
     } catch (error) {
       console.error('Erro ao atualizar serviço:', error);
+      setError('Erro ao salvar alterações');
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -159,21 +290,42 @@ export default function Services() {
 
   const handleNovoSalvar = async () => {
     if (!empresaId) {
-      console.error('ERRO: Empresa ID não encontrado');
+      setError('Empresa não encontrada');
+      return;
+    }
+
+    if (!novoServico.nome || !novoServico.categoria || !novoServico.preco || !novoServico.duracao) {
+      setError('Preencha todos os campos obrigatórios');
+      return;
+    }
+
+    if (!categorias.includes(novoServico.categoria)) {
+      setError('Categoria inválida');
       return;
     }
 
     try {
+      setIsSaving(true);
+      setError(null);
+
+      // Upload das imagens
+      const uploadedUrls: string[] = [];
+      for (let i = 0; i < imagens.length; i++) {
+        const storageRef = ref(storage, `servicos/${userId}/${novoServico.nome}/${i + 1}`);
+        await uploadBytes(storageRef, imagens[i]);
+        const downloadURL = await getDownloadURL(storageRef);
+        uploadedUrls.push(downloadURL);
+      }
+
       const empresaRef = doc(db, 'empresas', empresaId);
       const empresaDoc = await getDoc(empresaRef);
       
       if (!empresaDoc.exists()) {
-        console.error('Empresa não encontrada');
-        return;
+        throw new Error('Empresa não encontrada');
       }
 
       const empresaData = empresaDoc.data() as Empresa;
-      const novoId = crypto.randomUUID();
+      const novoId = uuidv4();
       const agora = Timestamp.now();
       
       const novoServicoCompleto: Servico = {
@@ -181,23 +333,36 @@ export default function Services() {
         id: novoId,
         createdAt: agora,
         updatedAt: agora,
-        imagensUrl: [],
-        funcionariosIds: []
+        imagensUrl: uploadedUrls,
+        funcionariosIds: selectedFuncionarios.map(f => f.id)
       };
 
-      const servicosAtualizados = [...(empresaData.servicos || []), novoServicoCompleto];
+      // Garantir que servicos seja um array antes de adicionar
+      const servicosAtualizados = Array.isArray(empresaData.servicos) 
+        ? [...empresaData.servicos, novoServicoCompleto]
+        : [novoServicoCompleto];
+
       await updateDoc(empresaRef, { servicos: servicosAtualizados });
       
       setServicos(servicosAtualizados);
       setNovoServico(initialNovoServico);
+      setImagens([]);
+      setUploadedImageUrls([]);
+      setSelectedFuncionarios([]);
       setOpenNovo(false);
     } catch (error) {
       console.error('Erro ao criar novo serviço:', error);
+      setError('Erro ao criar serviço');
+    } finally {
+      setIsSaving(false);
     }
   };
 
   const handleNovoCancelar = () => {
     setNovoServico(initialNovoServico);
+    setImagens([]);
+    setUploadedImageUrls([]);
+    setSelectedFuncionarios([]);
     setOpenNovo(false);
   };
 
@@ -269,10 +434,95 @@ export default function Services() {
                         fullWidth
                         sx={{ mb: 1, input: { color: '#fff' }, label: { color: '#aaa' } }}
                       />
+                      <FormControl fullWidth sx={{ mb: 1 }}>
+                        <InputLabel id="categoria-label" sx={{ color: '#aaa' }}>Categoria</InputLabel>
+                        <Select
+                          labelId="categoria-label"
+                          value={editData.categoria || ''}
+                          onChange={e => handleChange('categoria', e.target.value)}
+                          label="Categoria"
+                          sx={{ 
+                            color: '#fff',
+                            '.MuiOutlinedInput-notchedOutline': { borderColor: '#444' },
+                            '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#666' },
+                            '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#00C20A' },
+                            '.MuiSvgIcon-root': { color: '#aaa' }
+                          }}
+                          MenuProps={{
+                            PaperProps: {
+                              sx: {
+                                bgcolor: '#222',
+                                '& .MuiMenuItem-root': {
+                                  color: '#fff',
+                                  '&:hover': { bgcolor: '#444' },
+                                  '&.Mui-selected': { 
+                                    bgcolor: '#00C20A',
+                                    '&:hover': { bgcolor: '#00C20A' }
+                                  }
+                                }
+                              }
+                            }
+                          }}
+                        >
+                          {categorias.length > 0 ? (
+                            categorias.map((cat) => (
+                              <MenuItem 
+                                key={cat} 
+                                value={cat} 
+                                sx={{ 
+                                  color: '#fff',
+                                  '&:hover': { bgcolor: '#444' },
+                                  '&.Mui-selected': { 
+                                    bgcolor: '#00C20A',
+                                    '&:hover': { bgcolor: '#00C20A' }
+                                  }
+                                }}
+                              >
+                                {cat}
+                              </MenuItem>
+                            ))
+                          ) : (
+                            <MenuItem disabled sx={{ color: '#666' }}>
+                              Nenhuma categoria disponível
+                            </MenuItem>
+                          )}
+                        </Select>
+                      </FormControl>
+                      <FormControl fullWidth sx={{ mb: 1 }}>
+                        <InputLabel id="tipo-servico-label" sx={{ color: '#aaa' }}>Tipo de Serviço</InputLabel>
+                        <Select
+                          labelId="tipo-servico-label"
+                          value={editData.tipoServico || ''}
+                          onChange={e => handleChange('tipoServico', e.target.value)}
+                          label="Tipo de Serviço"
+                          sx={{ 
+                            color: '#fff',
+                            '.MuiOutlinedInput-notchedOutline': { borderColor: '#444' },
+                            '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#666' },
+                            '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#00C20A' },
+                            '.MuiSvgIcon-root': { color: '#aaa' }
+                          }}
+                        >
+                          {TIPOS_SERVICO.map((tipo) => (
+                            <MenuItem key={tipo} value={tipo} sx={{ color: '#333' }}>
+                              {tipo === 'pagamento no inicio' ? 'Pagamento no início' : 'Pagamento no final'}
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
                       <TextField
-                        label="Categoria"
-                        value={editData.categoria}
-                        onChange={e => handleChange('categoria', e.target.value)}
+                        label={`Valor ${editData.tipoServico === 'pagamento no inicio' ? 'fixo' : 'inicial'}`}
+                        value={editData.preco}
+                        onChange={e => handleChange('preco', parseFloat(e.target.value))}
+                        type="number"
+                        fullWidth
+                        sx={{ mb: 1, input: { color: '#fff' }, label: { color: '#aaa' } }}
+                      />
+                      <TextField
+                        label="Duração (minutos)"
+                        value={editData.duracao}
+                        onChange={e => handleChange('duracao', parseInt(e.target.value))}
+                        type="number"
                         fullWidth
                         sx={{ mb: 1, input: { color: '#fff' }, label: { color: '#aaa' } }}
                       />
@@ -280,32 +530,142 @@ export default function Services() {
                         label="Descrição"
                         value={editData.descricao}
                         onChange={e => handleChange('descricao', e.target.value)}
+                        multiline
+                        rows={3}
                         fullWidth
                         sx={{ mb: 1, input: { color: '#fff' }, label: { color: '#aaa' } }}
                       />
-                      <TextField
-                        label="Duração"
-                        value={editData.duracao}
-                        onChange={e => handleChange('duracao', e.target.value)}
-                        type="number"
-                        fullWidth
-                        sx={{ mb: 1, input: { color: '#fff' }, label: { color: '#aaa' } }}
-                      />
-                      <TextField
-                        label="Preço"
-                        value={editData.preco}
-                        onChange={e => handleChange('preco', e.target.value)}
-                        type="number"
-                        fullWidth
-                        sx={{ mb: 1, input: { color: '#fff' }, label: { color: '#aaa' } }}
-                      />
-                      <TextField
-                        label="Tipo de Serviço"
-                        value={editData.tipoServico}
-                        onChange={e => handleChange('tipoServico', e.target.value)}
-                        fullWidth
-                        sx={{ mb: 1, input: { color: '#fff' }, label: { color: '#aaa' } }}
-                      />
+                      <FormControl fullWidth sx={{ mb: 2 }}>
+                        <InputLabel id="funcionarios-label" sx={{ color: '#aaa' }}>Funcionários</InputLabel>
+                        <Select
+                          multiple
+                          value={selectedFuncionarios.map(f => f.id)}
+                          onChange={(e) => {
+                            const selectedIds = e.target.value as string[];
+                            const selected = funcionarios.filter(f => selectedIds.includes(f.id));
+                            setSelectedFuncionarios(selected);
+                          }}
+                          input={<OutlinedInput label="Funcionários" />}
+                          renderValue={(selected) => (
+                            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                              {selected.map((value) => {
+                                const funcionario = funcionarios.find(f => f.id === value);
+                                return funcionario ? (
+                                  <Chip
+                                    key={funcionario.id}
+                                    label={funcionario.nome}
+                                    sx={{ 
+                                      backgroundColor: '#444',
+                                      color: '#fff',
+                                      '& .MuiChip-deleteIcon': {
+                                        color: '#aaa',
+                                        '&:hover': { color: '#fff' }
+                                      }
+                                    }}
+                                    onDelete={() => {
+                                      const newSelected = selectedFuncionarios.filter(f => f.id !== funcionario.id);
+                                      setSelectedFuncionarios(newSelected);
+                                    }}
+                                  />
+                                ) : null;
+                              })}
+                            </Box>
+                          )}
+                          sx={{ 
+                            color: '#fff',
+                            '.MuiOutlinedInput-notchedOutline': { borderColor: '#444' },
+                            '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#666' },
+                            '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#00C20A' },
+                            '.MuiSvgIcon-root': { color: '#aaa' }
+                          }}
+                        >
+                          {funcionarios.map((funcionario) => (
+                            <MenuItem 
+                              key={funcionario.id} 
+                              value={funcionario.id}
+                              sx={{ 
+                                color: '#fff',
+                                '&:hover': { backgroundColor: '#444' },
+                                '&.Mui-selected': { 
+                                  backgroundColor: '#00C20A !important',
+                                  '&:hover': { backgroundColor: '#00C20A !important' }
+                                }
+                              }}
+                            >
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                <Avatar sx={{ width: 24, height: 24, bgcolor: '#666' }}>
+                                  {funcionario.nome.charAt(0).toUpperCase()}
+                                </Avatar>
+                                <Typography sx={{ color: '#fff' }}>{funcionario.nome}</Typography>
+                              </Box>
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                      <Box sx={{ mb: 2 }}>
+                        <Typography sx={{ color: '#aaa', mb: 1 }}>Imagens</Typography>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          multiple
+                          onChange={handleImageSelect}
+                          style={{ display: 'none' }}
+                          ref={fileInputRef}
+                        />
+                        <Button
+                          variant="outlined"
+                          onClick={() => fileInputRef.current?.click()}
+                          sx={{ 
+                            color: '#00C20A', 
+                            borderColor: '#00C20A',
+                            mb: 1,
+                            '&:hover': {
+                              borderColor: '#00C20A',
+                              bgcolor: 'rgba(0,194,10,0.1)'
+                            }
+                          }}
+                          startIcon={<ImageIcon />}
+                        >
+                          Adicionar Imagens
+                        </Button>
+                        <Box sx={{ 
+                          display: 'grid', 
+                          gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))',
+                          gap: 1,
+                          mt: 1
+                        }}>
+                          {[...uploadedImageUrls, ...imagens.map(img => URL.createObjectURL(img))].map((url, index) => (
+                            <Box key={index} sx={{ position: 'relative' }}>
+                              <img
+                                src={url}
+                                alt={`Imagem ${index + 1}`}
+                                style={{
+                                  width: '100%',
+                                  height: 100,
+                                  objectFit: 'cover',
+                                  borderRadius: 8,
+                                  border: '2px solid #00C20A'
+                                }}
+                              />
+                              <IconButton
+                                size="small"
+                                onClick={() => handleDeleteImage(index)}
+                                disabled={isDeletingImage === index}
+                                sx={{
+                                  position: 'absolute',
+                                  top: -8,
+                                  right: -8,
+                                  bgcolor: '#B10000',
+                                  color: '#fff',
+                                  '&:hover': { bgcolor: '#8B0000' }
+                                }}
+                              >
+                                <DeleteIcon fontSize="small" />
+                              </IconButton>
+                            </Box>
+                          ))}
+                        </Box>
+                      </Box>
                       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, mt: 1 }}>
                         <Box>
                           <IconButton onClick={handleSave} sx={{ color: 'lightgreen' }}><CheckIcon /></IconButton>
@@ -356,57 +716,244 @@ export default function Services() {
           <AddIcon />
         </Fab>
       </Tooltip>
-      <Dialog open={openNovo} onClose={handleNovoCancelar} maxWidth="xs" fullWidth>
-        <DialogTitle>Novo Serviço</DialogTitle>
-        <DialogContent>
-          <TextField
-            label="Nome"
-            value={novoServico.nome}
-            onChange={e => handleNovoChange('nome', e.target.value)}
-            fullWidth
-            sx={{ mb: 2 }}
-          />
-          <TextField
-            label="Categoria"
-            value={novoServico.categoria}
-            onChange={e => handleNovoChange('categoria', e.target.value)}
-            fullWidth
-            sx={{ mb: 2 }}
-          />
-          <TextField
-            label="Descrição"
-            value={novoServico.descricao}
-            onChange={e => handleNovoChange('descricao', e.target.value)}
-            fullWidth
-            sx={{ mb: 2 }}
-          />
-          <TextField
-            label="Duração (minutos)"
-            value={novoServico.duracao}
-            onChange={e => handleNovoChange('duracao', e.target.value)}
-            type="number"
-            fullWidth
-            sx={{ mb: 2 }}
-          />
-          <TextField
-            label="Preço"
-            value={novoServico.preco}
-            onChange={e => handleNovoChange('preco', e.target.value)}
-            type="number"
-            fullWidth
-            sx={{ mb: 2 }}
-          />
-          <TextField
-            label="Tipo de Serviço"
-            value={novoServico.tipoServico}
-            onChange={e => handleNovoChange('tipoServico', e.target.value)}
-            fullWidth
-            sx={{ mb: 2 }}
-          />
+      <Dialog open={openNovo} onClose={handleNovoCancelar} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ 
+          bgcolor: '#222', 
+          color: '#fff',
+          borderBottom: '1px solid #444'
+        }}>
+          Novo Serviço
+        </DialogTitle>
+        <DialogContent sx={{ bgcolor: '#222', color: '#fff' }}>
+          <Box sx={{ mt: 2 }}>
+            <TextField
+              label="Nome"
+              value={novoServico.nome}
+              onChange={e => handleNovoChange('nome', e.target.value)}
+              fullWidth
+              sx={{ mb: 2 }}
+            />
+            <FormControl fullWidth sx={{ mb: 2 }}>
+              <InputLabel id="nova-categoria-label" sx={{ color: '#aaa' }}>Categoria</InputLabel>
+              <Select
+                labelId="nova-categoria-label"
+                value={novoServico.categoria}
+                onChange={e => handleNovoChange('categoria', e.target.value)}
+                label="Categoria"
+                sx={{ 
+                  color: '#fff',
+                  '.MuiOutlinedInput-notchedOutline': { borderColor: '#444' },
+                  '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#666' },
+                  '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#00C20A' },
+                  '.MuiSvgIcon-root': { color: '#aaa' },
+                  '.MuiSelect-select': { 
+                    whiteSpace: 'normal',
+                    wordBreak: 'break-word'
+                  }
+                }}
+                MenuProps={{
+                  PaperProps: {
+                    sx: {
+                      bgcolor: '#222',
+                      '& .MuiMenuItem-root': {
+                        color: '#fff',
+                        '&:hover': { bgcolor: '#444' },
+                        '&.Mui-selected': { 
+                          bgcolor: '#00C20A',
+                          '&:hover': { bgcolor: '#00C20A' }
+                        }
+                      }
+                    }
+                  }
+                }}
+              >
+                {categorias.length > 0 ? (
+                  categorias.map((cat) => (
+                    <MenuItem 
+                      key={cat} 
+                      value={cat}
+                      sx={{ 
+                        color: '#fff',
+                        whiteSpace: 'normal',
+                        wordBreak: 'break-word'
+                      }}
+                    >
+                      {cat}
+                    </MenuItem>
+                  ))
+                ) : (
+                  <MenuItem disabled sx={{ color: '#666' }}>
+                    Nenhuma categoria disponível
+                  </MenuItem>
+                )}
+              </Select>
+            </FormControl>
+            <FormControl fullWidth sx={{ mb: 2 }}>
+              <InputLabel id="novo-tipo-servico-label">Tipo de Serviço</InputLabel>
+              <Select
+                labelId="novo-tipo-servico-label"
+                value={novoServico.tipoServico}
+                onChange={e => handleNovoChange('tipoServico', e.target.value)}
+                label="Tipo de Serviço"
+              >
+                {TIPOS_SERVICO.map((tipo) => (
+                  <MenuItem key={tipo} value={tipo}>
+                    {tipo === 'pagamento no inicio' ? 'Pagamento no início' : 'Pagamento no final'}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <TextField
+              label={`Valor ${novoServico.tipoServico === 'pagamento no inicio' ? 'fixo' : 'inicial'}`}
+              value={novoServico.preco}
+              onChange={e => handleNovoChange('preco', parseFloat(e.target.value))}
+              type="number"
+              fullWidth
+              sx={{ mb: 2 }}
+            />
+            <TextField
+              label="Duração (minutos)"
+              value={novoServico.duracao}
+              onChange={e => handleNovoChange('duracao', parseInt(e.target.value))}
+              type="number"
+              fullWidth
+              sx={{ mb: 2 }}
+            />
+            <TextField
+              label="Descrição"
+              value={novoServico.descricao}
+              onChange={e => handleNovoChange('descricao', e.target.value)}
+              multiline
+              rows={3}
+              fullWidth
+              sx={{ mb: 2 }}
+            />
+            <FormControl fullWidth sx={{ mb: 2 }}>
+              <InputLabel id="novos-funcionarios-label">Funcionários</InputLabel>
+              <Select
+                labelId="novos-funcionarios-label"
+                multiple
+                value={selectedFuncionarios.map(f => f.id)}
+                onChange={(e) => {
+                  const selectedIds = e.target.value as string[];
+                  const selected = funcionarios.filter(f => selectedIds.includes(f.id));
+                  setSelectedFuncionarios(selected);
+                }}
+                input={<OutlinedInput label="Funcionários" />}
+                renderValue={(selected) => (
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                    {selected.map((value) => {
+                      const funcionario = funcionarios.find(f => f.id === value);
+                      return (
+                        <Chip
+                          key={value}
+                          label={funcionario?.nome}
+                          sx={{ bgcolor: '#444', color: '#fff' }}
+                        />
+                      );
+                    })}
+                  </Box>
+                )}
+              >
+                {funcionarios.map((funcionario) => (
+                  <MenuItem key={funcionario.id} value={funcionario.id}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Avatar sx={{ width: 24, height: 24, bgcolor: '#00C20A', fontSize: '0.875rem' }}>
+                        {funcionario.nome.charAt(0)}
+                      </Avatar>
+                      {funcionario.nome}
+                    </Box>
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <Box sx={{ mb: 2 }}>
+              <Typography sx={{ mb: 1 }}>Imagens</Typography>
+              <input
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={handleImageSelect}
+                style={{ display: 'none' }}
+                ref={fileInputRef}
+              />
+              <Button
+                variant="outlined"
+                onClick={() => fileInputRef.current?.click()}
+                sx={{ 
+                  color: '#00C20A', 
+                  borderColor: '#00C20A',
+                  mb: 1,
+                  '&:hover': {
+                    borderColor: '#00C20A',
+                    bgcolor: 'rgba(0,194,10,0.1)'
+                  }
+                }}
+                startIcon={<ImageIcon />}
+              >
+                Adicionar Imagens
+              </Button>
+              <Box sx={{ 
+                display: 'grid', 
+                gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))',
+                gap: 1,
+                mt: 1
+              }}>
+                {imagens.map((img, index) => (
+                  <Box key={index} sx={{ position: 'relative' }}>
+                    <img
+                      src={URL.createObjectURL(img)}
+                      alt={`Imagem ${index + 1}`}
+                      style={{
+                        width: '100%',
+                        height: 100,
+                        objectFit: 'cover',
+                        borderRadius: 8,
+                        border: '2px solid #00C20A'
+                      }}
+                    />
+                    <IconButton
+                      size="small"
+                      onClick={() => handleDeleteImage(index)}
+                      disabled={isDeletingImage === index}
+                      sx={{
+                        position: 'absolute',
+                        top: -8,
+                        right: -8,
+                        bgcolor: '#B10000',
+                        color: '#fff',
+                        '&:hover': { bgcolor: '#8B0000' }
+                      }}
+                    >
+                      <DeleteIcon fontSize="small" />
+                    </IconButton>
+                  </Box>
+                ))}
+              </Box>
+            </Box>
+          </Box>
         </DialogContent>
-        <DialogActions>
-          <Button onClick={handleNovoCancelar} color="error">Cancelar</Button>
-          <Button onClick={handleNovoSalvar} variant="contained" color="primary">Salvar</Button>
+        <DialogActions sx={{ bgcolor: '#222', borderTop: '1px solid #444' }}>
+          <Button 
+            onClick={handleNovoCancelar} 
+            color="error"
+            sx={{ color: '#ff4444' }}
+          >
+            Cancelar
+          </Button>
+          <Button 
+            onClick={handleNovoSalvar} 
+            variant="contained" 
+            color="primary"
+            disabled={!novoServico.categoria || !categorias.includes(novoServico.categoria)}
+            sx={{ 
+              bgcolor: '#00C20A',
+              '&:hover': { bgcolor: '#00A208' },
+              '&.Mui-disabled': { bgcolor: '#444', color: '#666' }
+            }}
+          >
+            Salvar
+          </Button>
         </DialogActions>
       </Dialog>
     </Box>
