@@ -143,11 +143,11 @@ export default function Revenue() {
       <Card sx={{ background: '#222', color: '#fff', borderRadius: 4, minHeight: 200, position: 'relative', height: 650, display: 'flex', flexDirection: 'column' }}>
         <CardContent sx={{ p: 4, display: 'flex', flexDirection: 'column', flex: 1, height: '100%' }}>
           <CardHeader>
-    <Box>
-              <Typography variant="h6" color="#aaa" mb={1}>Receita Total</Typography>
+            <Box>
+              <Typography variant="h6" color="#aaa" mb={1} sx={{ fontSize: theme => `calc(${theme.typography.h6.fontSize} + 7px)` }}>Receita</Typography>
               <Typography variant="h4" fontWeight={600}>
                 {loading ? 'Carregando...' : receitaTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-        </Typography>
+              </Typography>
             </Box>
             <FormControl size="small" sx={{ minWidth: 100 }}>
               <InputLabel sx={{ color: '#fff' }}>Ano</InputLabel>

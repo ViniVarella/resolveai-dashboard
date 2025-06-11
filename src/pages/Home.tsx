@@ -1,4 +1,4 @@
-import { Box, Typography, Card, CardContent, FormControl, InputLabel, Select, MenuItem, Button, Popover, Checkbox } from '@mui/material';
+import { Box, Typography, Card, CardContent, FormControl, InputLabel, Select, MenuItem, Button, Popover } from '@mui/material';
 import { useEffect, useState, useRef } from 'react';
 import { db } from '../lib/firebase';
 import { collection, getDocs, query, where, Timestamp } from 'firebase/firestore';
@@ -23,11 +23,6 @@ const CardHeader = styled(Box)({
   alignItems: 'center',
   marginBottom: 16,
   width: '100%',
-});
-
-const StyledSelect = styled(Select)({
-  color: '#fff',
-  '& .MuiOutlinedInput-notchedOutline': { borderColor: '#fff' }
 });
 
 const meses = [
@@ -107,7 +102,6 @@ export default function Home() {
   // Agenda Hoje
   const [funcionarios, setFuncionarios] = useState<{ id: string, nome: string }[]>([]);
   const [agendamentos, setAgendamentos] = useState<{ funcionario: string, horario: string, cliente: string, servico: string }[]>([]);
-  const [loadingAgenda, setLoadingAgenda] = useState(true);
 
   // Filtro customizado Receita
   const handleOpenFiltro = (event: React.MouseEvent<HTMLElement>) => {
@@ -129,11 +123,9 @@ export default function Home() {
   }, [anoSelecionado]);
 
   useEffect(() => {
-    setLoadingAgenda(true);
     Promise.all([fetchFuncionarios(), fetchAgendamentosHoje()]).then(([funcs, ags]) => {
       setFuncionarios(funcs);
       setAgendamentos(ags);
-      setLoadingAgenda(false);
     });
   }, []);
 
@@ -157,13 +149,6 @@ export default function Home() {
   const receitasSemestre = receitas.slice(start, end);
   const receitaTotal = receitasSemestre.reduce((acc, v) => acc + v, 0);
 
-  // Agenda grid: funcionários x horários
-  const agendaGrid = horas.map(hora =>
-    funcionarios.map(func =>
-      agendamentos.find(a => a.funcionario === func.id && a.horario === hora)
-    )
-  );
-
   return (
     <Box sx={{ p: 2 }}>
       <Typography variant="h4" fontWeight={600} mb={3}>
@@ -174,7 +159,7 @@ export default function Home() {
         <Card sx={{ background: '#222', color: '#fff', borderRadius: 4, minWidth: 350, flex: 1, display: 'flex', flexDirection: 'column', height: 650 }}>
           <CardContent sx={{ p: 4, display: 'flex', flexDirection: 'column', height: '100%' }}>
             <CardHeader>
-              <Typography variant="h6" color="#aaa" sx={{ fontSize: theme => `calc(${theme.typography.h6.fontSize} + 7px)` }}>Receita Semestre</Typography>
+              <Typography variant="h6" color="#aaa" sx={{ fontSize: theme => `calc(${theme.typography.h6.fontSize} + 7px)` }}>Receita Semestral</Typography>
               <Button
                 variant="outlined"
                 sx={{ color: '#fff', borderColor: '#fff', textTransform: 'none', bgcolor: '#222', '&:hover': { bgcolor: '#333' } }}

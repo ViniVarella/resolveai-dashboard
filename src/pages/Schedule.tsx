@@ -61,11 +61,11 @@ export default function Schedule() {
       <Card sx={{ background: '#222', color: '#fff', borderRadius: 4, minHeight: 400, height: 650, display: 'flex', flexDirection: 'column', position: 'relative' }}>
         <CardContent sx={{ p: 4, display: 'flex', flexDirection: 'column', height: '100%' }}>
           <CardHeader>
-            <Typography variant="h5" color="#aaa">Calendário</Typography>
+            <Typography variant="h6" color="#aaa" sx={{ fontSize: theme => `calc(${theme.typography.h6.fontSize} + 7px)` }}>Calendário</Typography>
             <Box sx={{ display: 'flex', gap: 2 }}>
               <Button
                 variant="outlined"
-                sx={{ color: '#fff', borderColor: '#fff', textTransform: 'none', bgcolor: '#222', '&:hover': { bgcolor: '#333' } }}
+                sx={{ color: '#fff', borderColor: '#fff', textTransform: 'none', bgcolor: '#222', '&:hover': { bgcolor: '#333' }, display: 'flex', alignItems: 'end', height: 40, minHeight: 40, minWidth: 180 }}
                 onClick={handleOpenWeekPicker}
               >
                 {formatWeekLabel(weekDays)}
@@ -88,7 +88,7 @@ export default function Schedule() {
                   />
                 </LocalizationProvider>
               </Popover>
-              <FormControl size="small" sx={{ minWidth: 120 }}>
+              <FormControl size="small" sx={{ minWidth: 130 }}>
                 <InputLabel sx={{ color: '#fff' }}>Funcionário</InputLabel>
                 <StyledSelect
                   value={funcionarioSelecionado}
