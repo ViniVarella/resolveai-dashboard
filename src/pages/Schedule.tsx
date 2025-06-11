@@ -36,7 +36,6 @@ function getWeekRange(date: Date) {
 function formatWeekLabel(days: Date[]) {
   const first = days[0];
   const last = days[6];
-  const options: Intl.DateTimeFormatOptions = { day: '2-digit', month: 'short' };
   return `${first.getDate().toString().padStart(2, '0')}–${last.getDate().toString().padStart(2, '0')} de ${last.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}`;
 }
 
@@ -59,7 +58,7 @@ export default function Schedule() {
       <Typography variant="h4" fontWeight={600} mb={3}>
         Agenda
       </Typography>
-      <Card sx={{ background: '#222', color: '#fff', borderRadius: 4, minHeight: 400, height: 600, display: 'flex', flexDirection: 'column', position: 'relative' }}>
+      <Card sx={{ background: '#222', color: '#fff', borderRadius: 4, minHeight: 400, height: 650, display: 'flex', flexDirection: 'column', position: 'relative' }}>
         <CardContent sx={{ p: 4, display: 'flex', flexDirection: 'column', height: '100%' }}>
           <CardHeader>
             <Typography variant="h5" color="#aaa">Calendário</Typography>
@@ -104,33 +103,31 @@ export default function Schedule() {
               </FormControl>
             </Box>
           </CardHeader>
-          <Box sx={{ flex: 1, bgcolor: '#181818', borderRadius: 3, p: 2, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-            {/* Cabeçalho dos nomes dos dias da semana */}
-            <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', mb: 0.5 }}>
-              {diasSemanaAbrev.map((nome, idx) => (
-                <Box key={idx} sx={{ bgcolor: '#111', p: 1, textAlign: 'center', borderTopLeftRadius: idx === 0 ? 12 : 0, borderTopRightRadius: idx === 6 ? 12 : 0 }}>
-                  <Typography fontWeight={700} fontSize={15}>{nome}</Typography>
-                </Box>
-              ))}
-            </Box>
-            {/* Cabeçalho dos dias da semana */}
-            <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', mb: 1, borderRadius: 3, overflow: 'hidden' }}>
+          <Box sx={{ flex: 1, bgcolor: '#181818', borderRadius: 3, p: 2, display: 'flex', flexDirection: 'column', minHeight: 0, height: '100%' }}>
+            {/* Cabeçalho dos dias da semana com coluna 'Horário' */}
+            <Box sx={{ display: 'grid', gridTemplateColumns: `80px repeat(6, 1fr) 1.2fr`, mb: 1, borderRadius: 3, overflow: 'hidden' }}>
+              <Box sx={{ bgcolor: '#111', p: 2, textAlign: 'center', borderTopLeftRadius: 12, minHeight: 56, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRight: '1px solid #222' }}>
+                <Typography fontWeight={700} fontSize={17}>Horário</Typography>
+              </Box>
               {weekDays.map((d, idx) => (
-                <Box key={idx} sx={{ bgcolor: '#111', p: 2, borderRight: idx < 6 ? '1px solid #222' : 'none' }}>
+                <Box key={idx} sx={{ bgcolor: '#111', p: 2, borderRight: idx < 6 ? '1px solid #222' : 'none', minHeight: 56, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
                   <Typography fontWeight={600} fontSize={22}>{d.getDate().toString().padStart(2, '0')}</Typography>
-                  <Typography fontSize={16}>{diasSemana[d.getDay()]}</Typography>
+                  <Typography fontSize={16} sx={{ whiteSpace: 'nowrap', textAlign: 'center' }}>{diasSemana[d.getDay()]}</Typography>
                 </Box>
               ))}
             </Box>
-            {/* Linhas de horas */}
-            <Box sx={{ flex: 1, display: 'grid', gridTemplateRows: `repeat(${horas.length}, 1fr)`, gridTemplateColumns: 'repeat(7, 1fr)', gap: 0, height: '100%' }}>
-              {horas.map((hora, rowIdx) => (
-                weekDays.map((d, colIdx) => (
-                  <Box key={hora + '-' + colIdx} sx={{ border: '1px solid #222', minHeight: 40, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, color: '#888' }}>
+            {/* Linhas de horas com coluna fixa de horários */}
+            <Box sx={{ flex: 1, display: 'grid', gridTemplateRows: `repeat(${horas.length}, 1fr)`, gridTemplateColumns: `80px repeat(6, 1fr) 1.2fr`, gap: 0, height: '100%', overflowY: 'auto' }}>
+              {horas.map((hora, rowIdx) => [
+                <Box key={hora + '-hora'} sx={{ border: '1px solid #222', minHeight: 56, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, color: '#aaa', bgcolor: '#181818', fontWeight: 600 }}>
+                  {hora}
+                </Box>,
+                ...weekDays.map((_, colIdx) => (
+                  <Box key={hora + '-' + colIdx} sx={{ border: '1px solid #222', minHeight: 56, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, color: '#888' }}>
                     {/* Aqui futuramente exibir agendamentos */}
                   </Box>
                 ))
-              ))}
+              ])}
             </Box>
           </Box>
         </CardContent>

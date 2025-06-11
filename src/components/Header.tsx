@@ -1,24 +1,12 @@
-import { AppBar, Toolbar, Avatar, IconButton, Box, Typography, Menu, MenuItem } from '@mui/material';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { Avatar, IconButton, Box, Menu, MenuItem } from '@mui/material';
+import { useNavigate } from 'react-router-dom';
 import { useState } from 'react';
 
-const pageTitles: Record<string, string> = {
-  '/home': 'Página Inicial',
-  '/services': 'Serviços',
-  '/revenue': 'Faturamento',
-  '/employees': 'Funcionários',
-  '/schedule': 'Agenda',
-  '/statistics': 'Estatísticas',
-};
-
 interface HeaderProps {
-  open: boolean;
   sidebarWidth: number;
 }
 
-export default function Header({ open, sidebarWidth }: HeaderProps) {
-  const location = useLocation();
-  const title = pageTitles[location.pathname] || '';
+export default function Header({ sidebarWidth }: HeaderProps) {
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const navigate = useNavigate();
 

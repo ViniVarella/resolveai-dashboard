@@ -1,4 +1,4 @@
-import { Box, Grid, Typography, Card, CardContent, IconButton, TextField, Fab, Tooltip, Dialog, DialogTitle, DialogContent, DialogActions, Button, MenuItem, Select, InputLabel, FormControl } from '@mui/material';
+import { Box, Grid, Typography, Card, CardContent, IconButton, TextField, Fab, Tooltip, Dialog, DialogTitle, DialogContent, DialogActions, Button, FormControl, InputLabel, Select, MenuItem } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import CloseIcon from '@mui/icons-material/Close';
 import CheckIcon from '@mui/icons-material/Check';
@@ -40,11 +40,11 @@ export default function Employees() {
   const [funcionarios, setFuncionarios] = useState<Funcionario[]>([]);
   const [editId, setEditId] = useState<string | null>(null);
   const [editData, setEditData] = useState<Partial<Funcionario>>({});
-  const [loading, setLoading] = useState(true);
   const [openNovo, setOpenNovo] = useState(false);
   const [novoFuncionario, setNovoFuncionario] = useState<Omit<Funcionario, 'id'>>(initialNovoFuncionario);
   const [servicos, setServicos] = useState<Array<{ id: string; nome: string }>>([]);
   const { id: userId } = useUserContext();
+  const [loading, setLoading] = useState(true); // Added loading state
 
   useEffect(() => {
     async function fetchData() {
@@ -60,7 +60,7 @@ export default function Employees() {
         const empresasRef = collection(db, 'empresas');
         const q = query(empresasRef, where('userId', '==', userId));
         const empresasSnapshot = await getDocs(q);
-        
+
         if (empresasSnapshot.empty) {
           console.error('Empresa não encontrada para o usuário:', userId);
           setLoading(false);
@@ -70,9 +70,9 @@ export default function Employees() {
         const empresaDoc = empresasSnapshot.docs[0];
         const empresaData = empresaDoc.data();
         const empresaId = empresaDoc.id;
-        
+
         console.log('Dados da empresa:', empresaData);
-        
+
         // Buscar serviços da empresa para o select
         const servicosArray = empresaData.servicos?.map((servico: any) => ({
           id: servico.id,
@@ -149,16 +149,17 @@ export default function Employees() {
       const empresasRef = collection(db, 'empresas');
       const q = query(empresasRef, where('userId', '==', userId));
       const empresasSnapshot = await getDocs(q);
-      
+
       if (!empresasSnapshot.empty) {
         const empresaDoc = empresasSnapshot.docs[0];
         const empresaData = empresaDoc.data();
-        
+
         if (empresaData) {
-          const funcionariosAtualizados = empresaData.funcionarios.map((id: string) => 
-            id === editId ? { ...editData, id } : id
-          );
-          await updateDoc(doc(db, 'empresas', empresaDoc.id), { funcionarios: funcionariosAtualizados });
+          // No Firebase, você geralmente atualiza a lista de IDs de funcionários na empresa,
+          // não os dados completos dos funcionários diretamente no array de funcionários da empresa.
+          // Os dados do funcionário são atualizados na coleção 'users'.
+          // Não é necessário mapear o array `funcionarios` da empresa, pois ele contém apenas IDs.
+          // O que você salvou em 'users' já é o suficiente.
         }
       }
 
@@ -177,7 +178,7 @@ export default function Employees() {
   const handleNovoSalvar = async () => {
     if (!userId) return;
     try {
-      // Criar novo funcionário
+      // Criar novo funcionário na coleção 'users'
       const funcionarioRef = await addDoc(collection(db, 'users'), {
         ...novoFuncionario,
         tipoUsuario: 'Funcionario',
@@ -189,11 +190,11 @@ export default function Employees() {
       const empresasRef = collection(db, 'empresas');
       const q = query(empresasRef, where('userId', '==', userId));
       const empresasSnapshot = await getDocs(q);
-      
+
       if (!empresasSnapshot.empty) {
         const empresaDoc = empresasSnapshot.docs[0];
         const empresaData = empresaDoc.data();
-        
+
         if (empresaData) {
           const funcionariosAtualizados = [...(empresaData.funcionarios || []), funcionarioRef.id];
           await updateDoc(doc(db, 'empresas', empresaDoc.id), { funcionarios: funcionariosAtualizados });
@@ -216,18 +217,18 @@ export default function Employees() {
   const handleDelete = async (id: string) => {
     if (!userId || !window.confirm('Tem certeza que deseja excluir este funcionário?')) return;
     try {
-      // Remover funcionário
+      // Remover funcionário da coleção 'users'
       await deleteDoc(doc(db, 'users', id));
 
       // Buscar a empresa correta
       const empresasRef = collection(db, 'empresas');
       const q = query(empresasRef, where('userId', '==', userId));
       const empresasSnapshot = await getDocs(q);
-      
+
       if (!empresasSnapshot.empty) {
         const empresaDoc = empresasSnapshot.docs[0];
         const empresaData = empresaDoc.data();
-        
+
         if (empresaData) {
           const funcionariosAtualizados = empresaData.funcionarios.filter((funcId: string) => funcId !== id);
           await updateDoc(doc(db, 'empresas', empresaDoc.id), { funcionarios: funcionariosAtualizados });
@@ -255,166 +256,26 @@ export default function Employees() {
       <Typography variant="h4" fontWeight={600} mb={3}>
         Funcionários
       </Typography>
-      <Grid container spacing={4}>
-        {funcionarios.map(func => (
-          <Grid item xs={12} md={6} lg={4} key={func.id}>
-            <Card sx={{ background: '#222', color: '#fff', borderRadius: 4, minHeight: 200, position: 'relative' }}>
-              <CardContent>
-                {editId === func.id ? (
-                  <>
-                    <TextField
-                      label="Nome"
-                      value={editData.nome}
-                      onChange={e => handleChange('nome', e.target.value)}
-                      fullWidth
-                      sx={{ mb: 1, input: { color: '#fff' }, label: { color: '#aaa' } }}
-                    />
-                    <TextField
-                      label="Telefone"
-                      value={editData.telefone}
-                      onChange={e => handleChange('telefone', e.target.value)}
-                      fullWidth
-                      sx={{ mb: 1, input: { color: '#fff' }, label: { color: '#aaa' } }}
-                    />
-                    <TextField
-                      label="Email"
-                      value={editData.email}
-                      onChange={e => handleChange('email', e.target.value)}
-                      fullWidth
-                      sx={{ mb: 1, input: { color: '#fff' }, label: { color: '#aaa' } }}
-                    />
-                    <FormControl fullWidth sx={{ mb: 1 }}>
-                      <InputLabel sx={{ color: '#aaa' }}>Serviços Habilitados</InputLabel>
-                      <Select
-                        multiple
-                        value={editData.servicosHabilitados || []}
-                        onChange={e => handleChange('servicosHabilitados', e.target.value)}
-                        sx={{ color: '#fff', '.MuiSelect-icon': { color: '#fff' } }}
-                        renderValue={(selected) => (selected as string[]).join(', ')}
-                      >
-                        {servicos.map((servico) => (
-                          <MenuItem key={servico.id} value={servico.nome}>
-                            {servico.nome}
-                          </MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
-                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, mt: 1 }}>
-                      <Box>
-                        <IconButton onClick={handleSave} sx={{ color: 'lightgreen' }}><CheckIcon /></IconButton>
-                        <IconButton onClick={handleCancel} sx={{ color: 'tomato' }}><CloseIcon /></IconButton>
-                      </Box>
-                      <IconButton onClick={() => handleDelete(func.id)} sx={{ color: 'red', bgcolor: '#222', '&:hover': { bgcolor: '#333' } }}>
-                        <DeleteIcon />
-                      </IconButton>
-                    </Box>
-                  </>
-                ) : (
-                  <>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-                      {func.fotoPerfil ? (
-                        <img 
-                          src={func.fotoPerfil} 
-                          alt={func.nome}
-                          style={{ width: 60, height: 60, borderRadius: '50%', objectFit: 'cover' }}
-                        />
-                      ) : (
-                        <Box 
-                          sx={{ 
-                            width: 60, 
-                            height: 60, 
-                            borderRadius: '50%', 
-                            bgcolor: '#444',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center'
-                          }}
-                        >
-                          <Typography variant="h5">{func.nome.charAt(0)}</Typography>
-                        </Box>
-                      )}
-                      <Typography variant="h5" color="#aaa">{func.nome}</Typography>
-                    </Box>
-                    <Typography><b>Telefone:</b> {func.telefone}</Typography>
-                    <Typography><b>Email:</b> {func.email}</Typography>
-                    <Typography><b>Serviços:</b> {func.servicosHabilitados?.join(', ') || 'Nenhum'}</Typography>
-                    <Typography><b>Horário:</b> {func.horarioFuncionamento?.inicio} - {func.horarioFuncionamento?.fim}</Typography>
-                    <Typography><b>Dias:</b> {func.diasFuncionamento?.join(', ')}</Typography>
-                    <IconButton onClick={() => handleEdit(func)} sx={{ position: 'absolute', top: 16, right: 16, bgcolor: '#444', color: '#fff', '&:hover': { bgcolor: '#555' } }}>
-                      <EditIcon />
-                    </IconButton>
-                  </>
-                )}
-              </CardContent>
-            </Card>
-          </Grid>
-        ))}
-      </Grid>
-      <Tooltip title="Adicionar Funcionário">
-        <Fab
-          color="primary"
-          sx={{
-            position: 'fixed',
-            bottom: 32,
-            right: 32,
-            bgcolor: '#222',
-            color: '#fff',
-            fontWeight: 700,
-            fontSize: 18,
-            boxShadow: 2,
-            '&:hover': { bgcolor: '#333' }
-          }}
-          onClick={() => setOpenNovo(true)}
-          size="medium"
-        >
-          <AddIcon />
-        </Fab>
-      </Tooltip>
-      <Dialog open={openNovo} onClose={handleNovoCancelar} maxWidth="xs" fullWidth>
-        <DialogTitle>Novo Funcionário</DialogTitle>
-        <DialogContent>
-          <TextField
-            label="Nome"
-            value={novoFuncionario.nome}
-            onChange={e => handleNovoChange('nome', e.target.value)}
-            fullWidth
-            sx={{ mb: 2 }}
-          />
-          <TextField
-            label="Telefone"
-            value={novoFuncionario.telefone}
-            onChange={e => handleNovoChange('telefone', e.target.value)}
-            fullWidth
-            sx={{ mb: 2 }}
-          />
-          <TextField
-            label="Email"
-            value={novoFuncionario.email}
-            onChange={e => handleNovoChange('email', e.target.value)}
-            fullWidth
-            sx={{ mb: 2 }}
-          />
-          <FormControl fullWidth sx={{ mb: 2 }}>
-            <InputLabel>Serviços Habilitados</InputLabel>
-            <Select
-              multiple
-              value={novoFuncionario.servicosHabilitados}
-              onChange={e => handleNovoChange('servicosHabilitados', e.target.value)}
-              renderValue={(selected) => (selected as string[]).join(', ')}
-            >
-              {servicos.map((servico) => (
-                <MenuItem key={servico.id} value={servico.nome}>
-                  {servico.nome}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleNovoCancelar}>Cancelar</Button>
-          <Button onClick={handleNovoSalvar} variant="contained">Salvar</Button>
-        </DialogActions>
-      </Dialog>
-    </Box>
-  );
-} 
+      {funcionarios.length === 0 ? (
+        <Box sx={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          minHeight: '400px',
+          color: '#888',
+          textAlign: 'center',
+          gap: 2
+        }}>
+          <Typography variant="h5">Nenhum funcionário cadastrado</Typography>
+          <Typography>Clique no botão + para adicionar um novo funcionário</Typography>
+        </Box>
+      ) : (
+        <Grid container spacing={4}>
+          {funcionarios.map(func => (
+            <Grid item xs={12} md={6} lg={4} key={func.id}>
+              <Card sx={{ background: '#222', color: '#fff', borderRadius: 4, minHeight: 200, position: 'relative' }}>
+                <CardContent>
+                  {editId === func.id ? (
+                    <>
+                      <TextField

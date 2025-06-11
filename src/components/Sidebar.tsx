@@ -35,11 +35,14 @@ export default function Sidebar({ open, setOpen }: SidebarProps) {
         flexShrink: 0,
         whiteSpace: 'nowrap',
         boxSizing: 'border-box',
+        minWidth: 0,
+        overflowX: 'hidden',
         [`& .MuiDrawer-paper`]: {
           width: open ? SIDEBAR_WIDTH.expanded : SIDEBAR_WIDTH.collapsed,
           transition: 'width 0.2s',
           overflowX: 'hidden',
           bgcolor: 'background.paper',
+          minWidth: 0,
         },
       }}
     >
@@ -100,25 +103,40 @@ export default function Sidebar({ open, setOpen }: SidebarProps) {
           </IconButton>
         </Tooltip>
       </Toolbar>
-      <Box sx={{ overflow: 'auto' }}>
-        <List>
+      <Box sx={{ overflow: 'auto', overflowX: 'hidden', width: '100%' }}>
+        <List sx={{ width: '100%', maxWidth: '100%', overflowX: 'hidden' }}>
           {menuItems.map((item) => (
             <ListItem key={item.text} disablePadding sx={{ display: 'block' }}>
               <ListItemButton
                 component={Link}
                 to={item.path}
                 selected={location.pathname === item.path}
-                sx={{ px: 2 }}
+                sx={{ 
+                  px: 0,
+                  justifyContent: 'flex-start',
+                  minHeight: 48,
+                  width: '100%',
+                }}
               >
-                <ListItemIcon sx={{ minWidth: 0, width: 32, mr: 2 }}>{item.icon}</ListItemIcon>
+                <ListItemIcon sx={{ 
+                  minWidth: 0,
+                  width: `${SIDEBAR_WIDTH.collapsed}px`,
+                  display: 'flex',
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                  transition: 'width 0.2s',
+                }}>
+                  {item.icon}
+                </ListItemIcon>
                 <ListItemText 
                   primary={item.text} 
                   sx={{ 
                     minWidth: 0, 
                     opacity: open ? 1 : 0, 
-                    transition: 'opacity 0.2s', 
+                    transition: 'opacity 0.2s, width 0.2s, margin-left 0.2s', 
                     width: open ? 'auto' : 0, 
                     overflow: 'hidden',
+                    ml: open && (typeof window === 'undefined' || window.getComputedStyle(document.body).direction !== 'rtl') ? 1.5 : 0,
                   }} 
                 />
               </ListItemButton>

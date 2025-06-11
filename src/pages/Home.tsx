@@ -13,9 +13,8 @@ import {
   Tooltip,
   Legend,
 } from 'chart.js';
-import DataTable from '../components/DataTable';
+import DataTable from '../components/DataTable'; // Assuming this component exists
 import { useUserContext } from '../contexts/UserContext';
-import { styled } from '@mui/material/styles';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
 
@@ -57,26 +56,22 @@ const CardHeader = styled(Box)({
 
 const StyledSelect = styled(Select)({
   color: '#fff',
-  '& .MuiOutlinedInput-notchedOutline': { 
-    borderColor: '#fff' 
-  }
+  '& .MuiOutlinedInput-notchedOutline': { borderColor: '#fff' }
 });
 
 const meses = [
   'Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun',
   'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'
 ];
+// const horas = Array.from({ length: 13 }, (_, i) => `${(8 + i).toString().padStart(2, '0')}:00`); // 08:00 até 20:00 - Not used with DataTable
 
 function getAnoAtual() {
   return new Date().getFullYear();
 }
 
-function getMesAtual() {
-  return new Date().getMonth();
-}
-
+// Corrected getSemestreAtual to directly use Date object
 function getSemestreAtual() {
-  return getMesAtual() < 6 ? 1 : 2;
+  return new Date().getMonth() < 6 ? 1 : 2;
 }
 
 async function fetchReceitaPorMes(ano: number, empresaId: string): Promise<number[]> {
@@ -88,18 +83,18 @@ async function fetchReceitaPorMes(ano: number, empresaId: string): Promise<numbe
   const receitas: number[] = Array(12).fill(0);
   const col = collection(db, 'agendamentos');
   const q = query(
-    col, 
+    col,
     where('empresaId', '==', empresaId),
     where('status', '==', 'finalizado')
   );
-  
+
   const snapshot = await getDocs(q);
   console.log('Agendamentos encontrados:', snapshot.size);
-  
+
   snapshot.forEach(doc => {
     const agendamento = doc.data() as Agendamento;
     if (!agendamento.servico?.preco || !agendamento.data) return;
-    
+
     const dataObj = agendamento.data.toDate();
     if (dataObj.getFullYear() === ano) {
       const mes = dataObj.getMonth();
@@ -113,14 +108,14 @@ async function fetchReceitaPorMes(ano: number, empresaId: string): Promise<numbe
 
 async function fetchFuncionarios(empresaId: string): Promise<{ id: string; nome: string }[]> {
   if (!empresaId) return [];
-  
+
   try {
     const empresaDoc = await getDoc(doc(db, 'empresas', empresaId));
     if (!empresaDoc.exists()) return [];
-    
+
     const empresaData = empresaDoc.data();
-    const funcionariosIds = empresaData.funcionarios || [];
-    
+    const funcionariosIds = empresaData?.funcionarios || []; // Use optional chaining for safety
+
     const funcionariosPromises = funcionariosIds.map(async (id: string) => {
       const funcionarioDoc = await getDoc(doc(db, 'users', id));
       if (funcionarioDoc.exists()) {
@@ -132,7 +127,7 @@ async function fetchFuncionarios(empresaId: string): Promise<{ id: string; nome:
       }
       return null;
     });
-    
+
     return (await Promise.all(funcionariosPromises)).filter(Boolean) as { id: string; nome: string }[];
   } catch (error) {
     console.error('Erro ao buscar funcionários:', error);
@@ -150,10 +145,8 @@ async function fetchAgendamentosHoje(empresaId: string, funcionarioId?: string):
   hoje.setHours(0, 0, 0, 0);
   const amanha = new Date(hoje);
   amanha.setDate(amanha.getDate() + 1);
-  
   const inicioHoje = Timestamp.fromDate(hoje);
   const fimHoje = Timestamp.fromDate(amanha);
-  
   const col = collection(db, 'agendamentos');
   let q = query(
     col,
@@ -162,39 +155,57 @@ async function fetchAgendamentosHoje(empresaId: string, funcionarioId?: string):
     where('data', '<', fimHoje),
     where('status', '==', 'agendado')
   );
-  
+
   if (funcionarioId) {
     q = query(q, where('funcionarioId', '==', funcionarioId));
   }
-  
+
   const snapshot = await getDocs(q);
   const agendamentos: AgendamentoSimplificado[] = [];
-  
+
+  // Fetch client and employee names for display
+  const clientPromises: Promise<{ id: string; nome: string }>[] = [];
+  const employeeNames: { [key: string]: string } = {};
+
+  snapshot.forEach(doc => {
+    const data = doc.data() as Agendamento;
+    if (!employeeNames[data.funcionarioId]) {
+      clientPromises.push(getDoc(collection(db, 'users', data.clienteId)).then(doc => ({ id: doc.id, nome: doc.data()?.nome || 'Cliente Desconhecido' })));
+    }
+  });
+
+  const clients = await Promise.all(clientPromises);
+  const clientNames: { [key: string]: string } = {};
+  clients.forEach(client => {
+    if (client) clientNames[client.id] = client.nome;
+  });
+
+
   snapshot.forEach(doc => {
     const data = doc.data() as Agendamento;
     agendamentos.push({
-      funcionario: data.funcionarioId,
+      funcionario: employeeNames[data.funcionarioId] || data.funcionarioId, // Use fetched name, fallback to ID
       horario: data.horaInicio,
-      cliente: data.clienteId,
+      cliente: clientNames[data.clienteId] || data.clienteId, // Use fetched name, fallback to ID
       servico: data.servico.nome
     });
   });
-  
+
   return agendamentos.sort((a, b) => a.horario.localeCompare(b.horario));
 }
 
-// Função para obter os meses do semestre atual e os dados correspondentes
-function getSemestreData(receitas: number[], mesSelecionado: number) {
-  const semestre = mesSelecionado < 6 ? 0 : 1;
-  const start = semestre === 0 ? 0 : 6;
-  const end = semestre === 0 ? 6 : 12;
-  return {
-    meses: meses.slice(start, end),
-    receitas: receitas.slice(start, end),
-  };
-}
+// Função para obter os meses do semestre atual e os dados correspondentes (already in nicolas version)
+// function getSemestreData(receitas: number[], mesSelecionado: number) {
+//   const semestre = mesSelecionado < 6 ? 0 : 1;
+//   const start = semestre === 0 ? 0 : 6;
+//   const end = semestre === 0 ? 6 : 12;
+//   return {
+//     meses: meses.slice(start, end),
+//     receitas: receitas.slice(start, end),
+//   };
+// }
 
-// Função utilitária para gerar opções de semestre
+// Função utilitária para gerar opções de semestre (already in nicolas version)
 function gerarSemestres(anos: number[]): { label: string, ano: number, semestre: 1 | 2 }[] {
   return anos.flatMap(ano => [
     { label: `${ano}-1`, ano, semestre: 1 },
@@ -210,7 +221,7 @@ export default function Home() {
     const atual = getAnoAtual();
     return [atual, atual - 1, atual - 2];
   });
-  const [anoSelecionado, setAnoSelecionado] = useState(getAnoAtual());
+  // Changed semestreSelecionado to an object to align with nicolas version
   const [semestreSelecionado, setSemestreSelecionado] = useState<{ ano: number; semestre: number }>({
     ano: getAnoAtual(),
     semestre: getSemestreAtual()
@@ -219,23 +230,21 @@ export default function Home() {
   const [loadingReceita, setLoadingReceita] = useState(true);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
 
-  // Agenda Hoje
   const [funcionarios, setFuncionarios] = useState<{ id: string, nome: string }[]>([]);
   const [agendamentos, setAgendamentos] = useState<AgendamentoSimplificado[]>([]);
   const [loadingAgenda, setLoadingAgenda] = useState(true);
 
-  // Filtro customizado Receita
   const handleOpenFiltro = (event: React.MouseEvent<HTMLElement>) => {
     setAnchorEl(event.currentTarget);
   };
-  
+
   const handleCloseFiltro = () => {
     setAnchorEl(null);
   };
-  
+
   const openFiltro = Boolean(anchorEl);
 
-  // Buscar ID da empresa quando o userId mudar
+  // Fetch company ID when userId changes
   useEffect(() => {
     async function fetchEmpresaId() {
       if (!userId) return;
@@ -244,22 +253,29 @@ export default function Home() {
         const empresasRef = collection(db, 'empresas');
         const q = query(empresasRef, where('userId', '==', userId));
         const snapshot = await getDocs(q);
-        
+
         if (!snapshot.empty) {
           const empresaDoc = snapshot.docs[0];
           setEmpresaId(empresaDoc.id);
+        } else {
+          console.warn('No company found for the current user.');
+          setEmpresaId(''); // Clear company ID if not found
         }
       } catch (error) {
-        console.error('Erro ao buscar empresa:', error);
+        console.error('Error fetching company:', error);
       }
     }
 
     fetchEmpresaId();
   }, [userId]);
 
-  // Atualizar receitas quando empresaId ou semestre mudar
+  // Update revenue when companyId or selected semester changes
   useEffect(() => {
-    if (!empresaId) return;
+    if (!empresaId) {
+      setReceitas(Array(12).fill(0)); // Clear data if no company ID
+      setLoadingReceita(false);
+      return;
+    }
 
     setLoadingReceita(true);
     fetchReceitaPorMes(semestreSelecionado.ano, empresaId).then(receitas => {
@@ -268,9 +284,14 @@ export default function Home() {
     });
   }, [semestreSelecionado, empresaId]);
 
-  // Atualizar agendamentos quando empresaId ou funcionário mudar
+  // Update appointments when companyId or selected employee changes
   useEffect(() => {
-    if (!empresaId) return;
+    if (!empresaId) {
+      setFuncionarios([]);
+      setAgendamentos([]);
+      setLoadingAgenda(false);
+      return;
+    }
 
     setLoadingAgenda(true);
     Promise.all([
@@ -280,8 +301,12 @@ export default function Home() {
       setFuncionarios(funcs);
       setAgendamentos(ags);
       setLoadingAgenda(false);
+    }).catch(error => {
+      console.error("Error fetching agenda data:", error);
+      setLoadingAgenda(false);
     });
   }, [empresaId, funcionarioSelecionado]);
+
 
   const semestresOpcoes = gerarSemestres(anos);
   const start = semestreSelecionado.semestre === 1 ? 0 : 6;
@@ -301,8 +326,8 @@ export default function Home() {
   };
 
   return (
-    <Box sx={{ width: '100%', maxWidth: '100%', height: '100vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-      <Typography variant="h4" fontWeight={600} mb={3} sx={{ ml: 1, mt: 2 }}>
+    <Box sx={{ p: 2 }}>
+      <Typography variant="h4" fontWeight={600} mb={3}>
         Página Inicial
       </Typography>
       <Grid container spacing={4} sx={{ flex: 1, minHeight: 0 }}>
@@ -319,7 +344,7 @@ export default function Home() {
                     onChange={(e) => {
                       const value = e.target.value as string;
                       const [ano, semestre] = value.split('-');
-                      setSemestreSelecionado({ ano: Number(ano), semestre: Number(semestre) });
+                      setSemestreSelecionado({ ano: Number(ano), semestre: Number(semestre) as 1 | 2 });
                     }}
                     MenuProps={{ PaperProps: { sx: { background: '#222', color: '#fff' } } }}
                   >
@@ -378,11 +403,12 @@ export default function Home() {
               </CardHeader>
               <Box sx={{ width: '100%', flex: 1 }}>
                 <DataTable
-                  columns={["Horário", "Cliente", "Serviço"]}
+                  columns={["Horário", "Cliente", "Serviço", "Funcionário"]}
                   rows={agendamentos.map(a => [
                     a.horario,
                     a.cliente,
-                    a.servico
+                    a.servico,
+                    a.funcionario, // Add employee name to the DataTable row
                   ])}
                   loading={loadingAgenda}
                   emptyMessage="Nenhum agendamento para hoje"
