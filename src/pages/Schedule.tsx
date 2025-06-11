@@ -1,5 +1,6 @@
 import { Box, Card, CardContent, Typography, FormControl, InputLabel, Select, MenuItem, styled, Button, Popover } from '@mui/material';
-import { useState, useEffect } from 'react';
+import type { SelectChangeEvent } from '@mui/material/Select';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { LocalizationProvider, StaticDatePicker } from '@mui/x-date-pickers';
 import { ptBR } from 'date-fns/locale';
@@ -57,8 +58,10 @@ interface Agendamento {
     duracao: number;
   };
   funcionario: string;
+  funcionarioId: string;
   data: Timestamp;
-  horario: string;
+  horaInicio: string;
+  horaFim: string;
   status: string;
 }
 
@@ -70,13 +73,15 @@ interface Empresa {
 export default function Schedule() {
   const { id: userId } = useUser();
   const [funcionarios, setFuncionarios] = useState<Funcionario[]>([]);
-  const [funcionarioSelecionado, setFuncionarioSelecionado] = useState('');
+  const [funcionarioSelecionado, setFuncionarioSelecionado] = useState<string>('');
   const [agendamentos, setAgendamentos] = useState<Agendamento[]>([]);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const weekDays = getWeekRange(selectedDate);
+
+  // Memoizar weekDays para evitar recálculos desnecessários
+  const weekDays = useMemo(() => getWeekRange(selectedDate), [selectedDate]);
 
   // Função para buscar o ID da empresa
   const fetchEmpresaId = async (userId: string): Promise<string | null> => {
@@ -99,105 +104,136 @@ export default function Schedule() {
     }
   };
 
-  // Buscar funcionários da empresa
-  useEffect(() => {
-    async function fetchFuncionarios() {
-      if (!userId) {
-        setError('Usuário não autenticado');
+  // Consolidar o carregamento de dados em uma única função
+  const loadData = useCallback(async () => {
+    if (!userId) {
+      console.log('ERRO: User ID não encontrado');
+      setError('Usuário não autenticado');
+      setLoading(false);
+      return;
+    }
+
+    try {
+      console.log('Iniciando carregamento de dados...');
+      setLoading(true);
+      setError(null);
+
+      // Buscar ID da empresa
+      const empresaId = await fetchEmpresaId(userId);
+      if (!empresaId) {
+        console.log('ERRO: Empresa não encontrada');
+        setError('Empresa não encontrada');
         setLoading(false);
         return;
       }
 
-      try {
-        setLoading(true);
-        setError(null);
+      console.log('Empresa encontrada:', empresaId);
 
-        const empresaId = await fetchEmpresaId(userId);
-        if (!empresaId) {
-          setError('Empresa não encontrada');
-          setLoading(false);
-          return;
-        }
+      // Buscar funcionários
+      const empresaRef = doc(db, 'empresas', empresaId);
+      const empresaDoc = await getDoc(empresaRef);
+      
+      if (!empresaDoc.exists()) {
+        console.log('ERRO: Documento da empresa não encontrado');
+        setError('Empresa não encontrada');
+        setLoading(false);
+        return;
+      }
 
-        const empresaDoc = await getDoc(doc(db, 'empresas', empresaId));
-        const empresaData = empresaDoc.data() as Empresa;
-        
-        if (!empresaData?.funcionarios?.length) {
-          console.log('Nenhum funcionário cadastrado na empresa');
-          setFuncionarios([]);
-          setLoading(false);
-          return;
-        }
-
-        const funcionariosPromises = empresaData.funcionarios.map(async (funcId) => {
-          const funcDoc = await getDoc(doc(db, 'users', funcId));
+      const empresaData = empresaDoc.data();
+      const funcionariosIds = empresaData.funcionarios || [];
+      
+      if (funcionariosIds.length === 0) {
+        console.log('Nenhum funcionário encontrado na empresa');
+        setFuncionarios([]);
+      } else {
+        const funcionariosPromises = funcionariosIds.map(async (funcId: string) => {
+          const funcRef = doc(db, 'users', funcId);
+          const funcDoc = await getDoc(funcRef);
+          
           if (funcDoc.exists()) {
-            return { id: funcDoc.id, ...funcDoc.data() } as Funcionario;
+            const funcData = funcDoc.data();
+            return {
+              id: funcId,
+              nome: funcData.nome || 'Sem nome'
+            };
           }
           return null;
         });
 
-        const funcionariosData = (await Promise.all(funcionariosPromises)).filter((f): f is Funcionario => f !== null);
-        console.log('Funcionários encontrados:', funcionariosData.length);
-        
+        const funcionariosData = (await Promise.all(funcionariosPromises))
+          .filter((f): f is { id: string; nome: string } => f !== null);
+        console.log('Funcionários encontrados:', funcionariosData);
         setFuncionarios(funcionariosData);
-      } catch (error) {
-        console.error('Erro ao buscar funcionários:', error);
-        setError('Erro ao carregar funcionários');
-      } finally {
-        setLoading(false);
       }
+
+      // Buscar agendamentos usando weekDays memoizado
+      const inicioSemana = weekDays[0];
+      const fimSemana = weekDays[6];
+      inicioSemana.setHours(0, 0, 0, 0);
+      fimSemana.setHours(23, 59, 59, 999);
+
+      console.log('Buscando agendamentos entre:', inicioSemana.toLocaleString(), 'e', fimSemana.toLocaleString());
+
+      const agendamentosRef = collection(db, 'agendamentos');
+      const q = query(
+        agendamentosRef,
+        where('empresaId', '==', empresaId),
+        where('data', '>=', Timestamp.fromDate(inicioSemana)),
+        where('data', '<=', Timestamp.fromDate(fimSemana)),
+        where('status', '==', 'agendado')
+      );
+
+      const querySnapshot = await getDocs(q);
+      console.log('Total de agendamentos encontrados:', querySnapshot.size);
+
+      const agendamentosPromises = querySnapshot.docs.map(async (docSnapshot) => {
+        const data = docSnapshot.data();
+        
+        const clienteRef = doc(db, 'users', data.clienteId);
+        const clienteDoc = await getDoc(clienteRef);
+        const clienteNome = clienteDoc.exists() ? (clienteDoc.data() as { nome: string }).nome : 'Cliente não encontrado';
+        
+        const funcionarioRef = doc(db, 'users', data.funcionarioId);
+        const funcionarioDoc = await getDoc(funcionarioRef);
+        const funcionarioNome = funcionarioDoc.exists() ? (funcionarioDoc.data() as { nome: string }).nome : 'Funcionário não encontrado';
+
+        return {
+          id: docSnapshot.id,
+          ...data,
+          cliente: clienteNome,
+          funcionario: funcionarioNome,
+          funcionarioId: data.funcionarioId,
+          horaInicio: data.horaInicio || '08:00',
+          horaFim: data.horaFim || '09:00'
+        } as Agendamento;
+      });
+
+      const agendamentosData = await Promise.all(agendamentosPromises);
+      console.log('Agendamentos processados:', agendamentosData.length);
+      setAgendamentos(agendamentosData);
+
+    } catch (error) {
+      console.error('Erro ao carregar dados:', error);
+      setError('Erro ao carregar dados');
+    } finally {
+      setLoading(false);
     }
+  }, [userId, weekDays]); // Agora weekDays é memoizado
 
-    fetchFuncionarios();
-  }, [userId]);
-
-  // Buscar agendamentos da semana
+  // Usar um único useEffect para carregar os dados
   useEffect(() => {
-    async function fetchAgendamentos() {
-      if (!userId) return;
+    loadData();
+  }, [loadData]);
 
-      try {
-        setLoading(true);
-        const empresaId = await fetchEmpresaId(userId);
-        if (!empresaId) return;
-
-        // Calcular início e fim da semana
-        const inicioSemana = weekDays[0];
-        const fimSemana = weekDays[6];
-        inicioSemana.setHours(0, 0, 0, 0);
-        fimSemana.setHours(23, 59, 59, 999);
-
-        console.log('Buscando agendamentos entre:', inicioSemana, 'e', fimSemana);
-
-        // Buscar agendamentos
-        const agendamentosRef = collection(db, 'agendamentos');
-        const q = query(
-          agendamentosRef,
-          where('empresaId', '==', empresaId),
-          where('data', '>=', Timestamp.fromDate(inicioSemana)),
-          where('data', '<=', Timestamp.fromDate(fimSemana))
-        );
-
-        const querySnapshot = await getDocs(q);
-        const agendamentosData = querySnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        })) as Agendamento[];
-
-        console.log('Agendamentos encontrados:', agendamentosData.length);
-        setAgendamentos(agendamentosData);
-      } catch (error) {
-        console.error('Erro ao buscar agendamentos:', error);
-        setError('Erro ao carregar agendamentos');
-      } finally {
-        setLoading(false);
-      }
+  // Atualizar o useEffect para selecionar o primeiro funcionário quando a lista for carregada
+  useEffect(() => {
+    if (funcionarios.length > 0 && !funcionarioSelecionado) {
+      setFuncionarioSelecionado(funcionarios[0].id);
     }
+  }, [funcionarios]);
 
-    fetchAgendamentos();
-  }, [userId, weekDays]);
-
+  // Handlers para os filtros
   const handleOpenWeekPicker = (event: React.MouseEvent<HTMLElement>) => {
     setAnchorEl(event.currentTarget);
   };
@@ -206,24 +242,177 @@ export default function Schedule() {
     setAnchorEl(null);
   };
 
-  const open = Boolean(anchorEl);
+  const handleFuncionarioChange = (event: SelectChangeEvent<unknown>) => {
+    const value = event.target.value as string;
+    if (value !== funcionarioSelecionado) {
+      console.log('Funcionário selecionado:', value);
+      setFuncionarioSelecionado(value);
+    }
+  };
+
+  const handleDateChange = (date: Date | null) => {
+    if (date && !isSameDay(date, selectedDate)) {
+      console.log('Data selecionada:', date);
+      setSelectedDate(date);
+      handleCloseWeekPicker();
+    }
+  };
+
+  // Renderização dos filtros
+  const renderFilters = () => (
+    <Box sx={{ display: 'flex', gap: 2 }}>
+      <Button
+        variant="outlined"
+        sx={{ 
+          color: '#fff', 
+          borderColor: '#fff', 
+          textTransform: 'none', 
+          bgcolor: '#222', 
+          '&:hover': { bgcolor: '#333' }, 
+          display: 'flex', 
+          alignItems: 'center', 
+          height: 40, 
+          minHeight: 40, 
+          minWidth: 180 
+        }}
+        onClick={handleOpenWeekPicker}
+      >
+        {formatWeekLabel(weekDays)}
+      </Button>
+      <Popover
+        open={Boolean(anchorEl)}
+        anchorEl={anchorEl}
+        onClose={handleCloseWeekPicker}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+        transformOrigin={{ vertical: 'top', horizontal: 'left' }}
+      >
+        <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={ptBR}>
+          <StaticDatePicker
+            displayStaticWrapperAs="desktop"
+            value={selectedDate}
+            onChange={handleDateChange}
+            showDaysOutsideCurrentMonth
+            sx={{
+              '& .MuiPickersDay-root': {
+                color: '#fff',
+                '&.Mui-selected': {
+                  backgroundColor: '#666',
+                  '&:hover': {
+                    backgroundColor: '#888',
+                  },
+                },
+              },
+              '& .MuiPickersCalendarHeader-root': {
+                color: '#fff',
+              },
+              backgroundColor: '#222',
+              color: '#fff',
+            }}
+          />
+        </LocalizationProvider>
+      </Popover>
+      <FormControl size="small" sx={{ minWidth: 130 }}>
+        <InputLabel sx={{ color: '#fff' }}>Funcionário</InputLabel>
+        <StyledSelect
+          value={funcionarioSelecionado}
+          label="Funcionário"
+          onChange={handleFuncionarioChange}
+          MenuProps={{ 
+            PaperProps: { 
+              sx: { 
+                background: '#222', 
+                color: '#fff',
+                maxHeight: 300
+              } 
+            } 
+          }}
+        >
+          {funcionarios.map((func) => (
+            <MenuItem key={func.id} value={func.id}>
+              {func.nome}
+            </MenuItem>
+          ))}
+        </StyledSelect>
+      </FormControl>
+    </Box>
+  );
 
   // Função para encontrar agendamentos em um horário específico
   const getAgendamentosNoHorario = (hora: string, data: Date) => {
     return agendamentos.filter(ag => {
       const agData = ag.data.toDate();
+      const [horaInicio] = ag.horaInicio.split(':');
+      const [horaFim] = ag.horaFim.split(':');
+      const horaNum = parseInt(hora.split(':')[0]);
+      const horaInicioNum = parseInt(horaInicio);
+      const horaFimNum = parseInt(horaFim);
+      
       return (
-        ag.horario === hora &&
         isSameDay(agData, data) &&
-        (!funcionarioSelecionado || ag.funcionario === funcionarioSelecionado)
+        horaNum >= horaInicioNum && 
+        horaNum < horaFimNum &&
+        (!funcionarioSelecionado || ag.funcionarioId === funcionarioSelecionado)
       );
     });
   };
 
   if (loading) {
     return (
-      <Box sx={{ p: 2, display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
-        <Typography>Carregando agenda...</Typography>
+      <Box sx={{ p: 2 }}>
+        <Typography variant="h4" fontWeight={600} mb={3}>
+          Agenda
+        </Typography>
+        <Card sx={{ background: '#222', color: '#fff', borderRadius: 4, minHeight: 400, height: 650, display: 'flex', flexDirection: 'column', position: 'relative' }}>
+          <CardContent sx={{ p: 4, display: 'flex', flexDirection: 'column', height: '100%' }}>
+            <CardHeader>
+              <Typography variant="h6" color="#aaa" sx={{ fontSize: theme => `calc(${theme.typography.h6.fontSize} + 7px)` }}>Calendário</Typography>
+              {renderFilters()}
+            </CardHeader>
+            <Box sx={{ flex: 1, bgcolor: '#181818', borderRadius: 3, p: 2, display: 'flex', flexDirection: 'column', minHeight: 0, height: '100%' }}>
+              {/* Placeholder da grade */}
+              <Box sx={{ 
+                display: 'grid', 
+                gridTemplateColumns: `80px repeat(7, 1fr)`, 
+                mb: 0.5,
+                position: 'sticky',
+                top: 0,
+                zIndex: 1,
+                bgcolor: '#181818'
+              }}>
+                <Box sx={{ bgcolor: '#111', p: 1, textAlign: 'center', borderTopLeftRadius: 12 }}>
+                  <Typography fontWeight={700} fontSize={15}>Horário</Typography>
+                </Box>
+                {weekDays.map((d, idx) => (
+                  <Box 
+                    key={idx} 
+                    sx={{ 
+                      bgcolor: '#111', 
+                      p: 1, 
+                      textAlign: 'center', 
+                      borderTopRightRadius: idx === 6 ? 12 : 0,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      gap: 0.5
+                    }}
+                  >
+                    <Typography fontWeight={700} fontSize={15}>{diasSemanaAbrev[d.getDay()]}</Typography>
+                    <Typography fontSize={13} color="#aaa">{d.getDate().toString().padStart(2, '0')}</Typography>
+                  </Box>
+                ))}
+              </Box>
+              <Box sx={{ 
+                flex: 1, 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'center',
+                color: '#aaa'
+              }}>
+                <Typography>Carregando agendamentos...</Typography>
+              </Box>
+            </Box>
+          </CardContent>
+        </Card>
       </Box>
     );
   }
@@ -245,99 +434,135 @@ export default function Schedule() {
         <CardContent sx={{ p: 4, display: 'flex', flexDirection: 'column', height: '100%' }}>
           <CardHeader>
             <Typography variant="h6" color="#aaa" sx={{ fontSize: theme => `calc(${theme.typography.h6.fontSize} + 7px)` }}>Calendário</Typography>
-            <Box sx={{ display: 'flex', gap: 2 }}>
-              <Button
-                variant="outlined"
-                sx={{ color: '#fff', borderColor: '#fff', textTransform: 'none', bgcolor: '#222', '&:hover': { bgcolor: '#333' }, display: 'flex', alignItems: 'end', height: 40, minHeight: 40, minWidth: 180 }}
-                onClick={handleOpenWeekPicker}
-              >
-                {formatWeekLabel(weekDays)}
-              </Button>
-              <Popover
-                open={open}
-                anchorEl={anchorEl}
-                onClose={handleCloseWeekPicker}
-                anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
-              >
-                <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={ptBR}>
-                  <StaticDatePicker
-                    displayStaticWrapperAs="desktop"
-                    value={selectedDate}
-                    onChange={date => {
-                      if (date) setSelectedDate(date);
-                      handleCloseWeekPicker();
-                    }}
-                    showDaysOutsideCurrentMonth
-                  />
-                </LocalizationProvider>
-              </Popover>
-              <FormControl size="small" sx={{ minWidth: 130 }}>
-                <InputLabel sx={{ color: '#fff' }}>Funcionário</InputLabel>
-                <StyledSelect
-                  value={funcionarioSelecionado}
-                  label="Funcionário"
-                  onChange={e => setFuncionarioSelecionado(e.target.value as string)}
-                  MenuProps={{ PaperProps: { sx: { background: '#222', color: '#fff' } } }}
-                >
-                  <MenuItem value="">Todos</MenuItem>
-                  {funcionarios.map(func => (
-                    <MenuItem key={func.id} value={func.id}>{func.nome}</MenuItem>
-                  ))}
-                </StyledSelect>
-              </FormControl>
-            </Box>
+            {renderFilters()}
           </CardHeader>
           <Box sx={{ flex: 1, bgcolor: '#181818', borderRadius: 3, p: 2, display: 'flex', flexDirection: 'column', minHeight: 0, height: '100%' }}>
-            {/* Cabeçalho dos dias da semana com coluna 'Horário' */}
-            <Box sx={{ display: 'grid', gridTemplateColumns: `80px repeat(7, 1fr)`, mb: 1, borderRadius: 3, overflow: 'hidden' }}>
-              <Box sx={{ bgcolor: '#111', p: 2, textAlign: 'center', borderTopLeftRadius: 12, minHeight: 56, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRight: '1px solid #222' }}>
-                <Typography fontWeight={700} fontSize={17}>Horário</Typography>
+            {/* Cabeçalho dos dias da semana */}
+            <Box sx={{ 
+              display: 'grid', 
+              gridTemplateColumns: `80px repeat(7, 1fr)`, 
+              mb: 0.5,
+              position: 'sticky',
+              top: 0,
+              zIndex: 1,
+              bgcolor: '#181818'
+            }}>
+              <Box sx={{ bgcolor: '#111', p: 1, textAlign: 'center', borderTopLeftRadius: 12 }}>
+                <Typography fontWeight={700} fontSize={15}>Horário</Typography>
               </Box>
               {weekDays.map((d, idx) => (
-                <Box key={idx} sx={{ bgcolor: '#111', p: 2, borderRight: idx < 6 ? '1px solid #222' : 'none', minHeight: 56, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-                  <Typography fontWeight={600} fontSize={22}>{d.getDate().toString().padStart(2, '0')}</Typography>
-                  <Typography fontSize={16} sx={{ whiteSpace: 'nowrap', textAlign: 'center' }}>{diasSemana[d.getDay()]}</Typography>
+                <Box 
+                  key={idx} 
+                  sx={{ 
+                    bgcolor: '#111', 
+                    p: 1, 
+                    textAlign: 'center', 
+                    borderTopRightRadius: idx === 6 ? 12 : 0,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: 0.5
+                  }}
+                >
+                  <Typography fontWeight={700} fontSize={15}>{diasSemanaAbrev[d.getDay()]}</Typography>
+                  <Typography fontSize={13} color="#aaa">{d.getDate().toString().padStart(2, '0')}</Typography>
                 </Box>
               ))}
             </Box>
-            {/* Linhas de horas com coluna fixa de horários */}
-            <Box sx={{ flex: 1, display: 'grid', gridTemplateRows: `repeat(${horas.length}, 1fr)`, gridTemplateColumns: `80px repeat(7, 1fr)`, gap: 0, height: '100%', overflowY: 'auto' }}>
-              {horas.map((hora, rowIdx) => [
-                <Box key={`${hora}-hora`} sx={{ border: '1px solid #222', minHeight: 56, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, color: '#aaa', bgcolor: '#181818', fontWeight: 600 }}>
-                  {hora}
-                </Box>,
-                ...weekDays.map((data, colIdx) => {
+
+            {/* Grade de horários com agendamentos */}
+            <Box 
+              sx={{ 
+                flex: 1,
+                display: 'grid',
+                gridTemplateRows: `repeat(${horas.length}, 80px)`,
+                gridTemplateColumns: `80px repeat(7, 1fr)`,
+                gap: 0,
+                overflowY: 'auto',
+                position: 'relative'
+              }}
+            >
+              {horas.map((hora, rowIdx) => {
+                const horaNum = parseInt(hora.split(':')[0]);
+                const cells = [
+                  <Box 
+                    key={`${hora}-hora`} 
+                    sx={{ 
+                      border: '1px solid #222',
+                      height: '100%',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: 15,
+                      color: '#aaa',
+                      bgcolor: '#181818',
+                      fontWeight: 600,
+                      position: 'sticky',
+                      left: 0,
+                      zIndex: 1
+                    }}
+                  >
+                    {hora}
+                  </Box>
+                ];
+
+                weekDays.forEach((data) => {
                   const agendamentosNoHorario = getAgendamentosNoHorario(hora, data);
-                  return (
+                  
+                  cells.push(
                     <Box 
-                      key={`${hora}-${colIdx}`} 
+                      key={`${hora}-${data.toISOString()}`}
                       sx={{ 
-                        border: '1px solid #222', 
-                        minHeight: 56, 
-                        display: 'flex', 
-                        flexDirection: 'column',
-                        alignItems: 'center', 
-                        justifyContent: 'center', 
-                        fontSize: 14,
-                        color: agendamentosNoHorario.length > 0 ? '#fff' : '#888',
-                        bgcolor: agendamentosNoHorario.length > 0 ? '#333' : 'transparent',
-                        p: 1,
-                        gap: 0.5
+                        border: '1px solid #222',
+                        height: '100%',
+                        position: 'relative',
+                        bgcolor: 'transparent'
                       }}
                     >
-                      {agendamentosNoHorario.map(ag => (
-                        <Box key={ag.id} sx={{ textAlign: 'center', width: '100%' }}>
-                          <Typography sx={{ fontWeight: 600, fontSize: 13 }}>{ag.cliente}</Typography>
-                          <Typography sx={{ fontSize: 12, color: '#aaa' }}>{ag.servico.nome}</Typography>
-                          <Typography sx={{ fontSize: 12, color: '#aaa' }}>
-                            R$ {Number(ag.servico.preco).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                          </Typography>
-                        </Box>
-                      ))}
+                      {agendamentosNoHorario.map((ag) => {
+                        const [horaInicio] = ag.horaInicio.split(':');
+                        const [horaFim] = ag.horaFim.split(':');
+                        const horaInicioNum = parseInt(horaInicio);
+                        const horaFimNum = parseInt(horaFim);
+                        const duracao = horaFimNum - horaInicioNum;
+                        
+                        return (
+                          <Box
+                            key={ag.id}
+                            sx={{
+                              position: 'absolute',
+                              top: 0,
+                              left: 0,
+                              right: 0,
+                              height: `${duracao * 100}%`,
+                              bgcolor: '#333',
+                              border: '1px solid #444',
+                              borderRadius: 1,
+                              p: 1,
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: 0.5,
+                              overflow: 'hidden'
+                            }}
+                          >
+                            <Typography sx={{ fontWeight: 600, fontSize: 14 }}>
+                              {ag.cliente}
+                            </Typography>
+                            <Typography sx={{ fontSize: 12, color: '#aaa' }}>
+                              {ag.servico.nome}
+                            </Typography>
+                            <Typography sx={{ fontSize: 12, color: '#aaa' }}>
+                              R$ {Number(ag.servico.preco).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                            </Typography>
+                          </Box>
+                        );
+                      })}
                     </Box>
                   );
-                })
-              ])}
+                });
+
+                return cells;
+              })}
             </Box>
           </Box>
         </CardContent>

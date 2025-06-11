@@ -44,17 +44,28 @@ interface ReceitaData {
   receitaTotal: number;
 }
 
-interface Agendamento {
-  funcionario: string;
-  horario: string;
-  cliente: string;
+interface AgendamentoData {
+  clienteId: string;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+  data: Timestamp;
+  empresaId: string;
+  funcionarioId: string;
   servico: {
     nome: string;
     preco: number;
     duracao: number;
   };
   status: string;
-  data: Timestamp;
+  horaInicio: string;
+  horaFim: string;
+}
+
+interface Agendamento extends AgendamentoData {
+  id: string;
+  cliente: string;
+  funcionario: string;
+  horario: string;
 }
 
 async function fetchEmpresaId(userId: string): Promise<string | null> {
@@ -133,7 +144,6 @@ async function fetchAgendamentosHoje(userId: string): Promise<Agendamento[]> {
   const fimHoje = Timestamp.fromDate(amanha);
   
   console.log('Buscando agendamentos entre:', inicioHoje.toDate().toLocaleString(), 'e', fimHoje.toDate().toLocaleString());
-  console.log('Data de hoje (objeto Date):', hoje.toLocaleString());
   
   const col = collection(db, 'agendamentos');
   const q = query(
@@ -147,28 +157,27 @@ async function fetchAgendamentosHoje(userId: string): Promise<Agendamento[]> {
   const snapshot = await getDocs(q);
   console.log('Total de agendamentos encontrados:', snapshot.size);
   
-  const agendamentos = snapshot.docs.map(doc => {
-    const data = doc.data();
-    const dataObj = data.data.toDate();
-    console.log('Agendamento encontrado:', {
-      id: doc.id,
-      cliente: data.cliente,
-      servico: data.servico?.nome,
-      horario: data.horario,
-      funcionario: data.funcionario,
-      data: dataObj.toLocaleString(),
-      dataTimestamp: data.data,
-      horarioAgendamento: data.horario
-    });
+  const agendamentos = await Promise.all(snapshot.docs.map(async (docSnapshot) => {
+    const data = docSnapshot.data() as AgendamentoData;
+    
+    // Buscar dados do cliente
+    const clienteRef = doc(db, 'users', data.clienteId);
+    const clienteDoc = await getDoc(clienteRef);
+    const clienteNome = clienteDoc.exists() ? (clienteDoc.data() as { nome: string }).nome : 'Cliente não encontrado';
+    
+    // Buscar dados do funcionário
+    const funcionarioRef = doc(db, 'users', data.funcionarioId);
+    const funcionarioDoc = await getDoc(funcionarioRef);
+    const funcionarioNome = funcionarioDoc.exists() ? (funcionarioDoc.data() as { nome: string }).nome : 'Funcionário não encontrado';
+
     return {
-      funcionario: data.funcionario,
-      horario: data.horario,
-      cliente: data.cliente,
-      servico: data.servico,
-      status: data.status,
-      data: data.data
+      id: docSnapshot.id,
+      ...data,
+      cliente: clienteNome,
+      funcionario: funcionarioNome,
+      horario: data.horaInicio // Para compatibilidade
     } as Agendamento;
-  });
+  }));
 
   return agendamentos;
 }
@@ -428,83 +437,136 @@ export default function Home() {
                 <Typography>Nenhum agendamento para hoje</Typography>
               </Box>
             ) : (
-              <Box sx={{ flex: 1, bgcolor: '#181818', borderRadius: 3, p: 2, display: 'flex', flexDirection: 'column', minHeight: 0, overflowX: 'auto', height: '100%' }}>
-                {/* Cabeçalho dos nomes dos funcionários com coluna de horários */}
-                <Box sx={{ display: 'grid', gridTemplateColumns: `80px repeat(${funcionarios.length}, 1fr)`, mb: 0.5 }}>
+              <Box sx={{ flex: 1, bgcolor: '#181818', borderRadius: 3, p: 2, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
+                {/* Cabeçalho com nomes dos funcionários */}
+                <Box sx={{ 
+                  display: 'grid', 
+                  gridTemplateColumns: `80px repeat(${funcionarios.length}, 1fr)`, 
+                  mb: 0.5,
+                  position: 'sticky',
+                  top: 0,
+                  zIndex: 1,
+                  bgcolor: '#181818'
+                }}>
                   <Box sx={{ bgcolor: '#111', p: 1, textAlign: 'center', borderTopLeftRadius: 12 }}>
                     <Typography fontWeight={700} fontSize={15}>Horário</Typography>
                   </Box>
                   {funcionarios.map((func, idx) => (
-                    <Box key={func.id} sx={{ bgcolor: '#111', p: 1, textAlign: 'center', borderTopRightRadius: idx === funcionarios.length - 1 ? 12 : 0 }}>
+                    <Box 
+                      key={func.id} 
+                      sx={{ 
+                        bgcolor: '#111', 
+                        p: 1, 
+                        textAlign: 'center', 
+                        borderTopRightRadius: idx === funcionarios.length - 1 ? 12 : 0,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        gap: 0.5
+                      }}
+                    >
                       <Typography fontWeight={700} fontSize={15}>{func.nome}</Typography>
                     </Box>
                   ))}
                 </Box>
-                {/* Linhas de horas com coluna fixa de horários */}
-                <Box ref={gridRef} sx={{ flex: 1, display: 'grid', gridTemplateRows: `repeat(${horas.length}, 1fr)`, gridTemplateColumns: `80px repeat(${funcionarios.length}, 1fr)`, gap: 0, height: '100%', overflowY: 'auto' }}>
-                  {horas.map((hora: string, rowIdx: number) => {
-                    // Debug para cada linha de horário
-                    const agendamentosNesteHorario = agendamentos.filter(a => a.horario === hora);
-                    if (agendamentosNesteHorario.length > 0) {
-                      console.log(`Horário ${hora}:`, agendamentosNesteHorario.map(ag => ({
-                        cliente: ag.cliente,
-                        funcionario: ag.funcionario,
-                        servico: ag.servico?.nome
-                      })));
-                    }
 
+                {/* Grade de horários com agendamentos */}
+                <Box 
+                  ref={gridRef} 
+                  sx={{ 
+                    flex: 1,
+                    display: 'grid',
+                    gridTemplateRows: `repeat(${horas.length}, 80px)`,
+                    gridTemplateColumns: `80px repeat(${funcionarios.length}, 1fr)`,
+                    gap: 0,
+                    overflowY: 'auto',
+                    position: 'relative'
+                  }}
+                >
+                  {horas.map((hora, rowIdx) => {
+                    const horaNum = parseInt(hora.split(':')[0]);
                     const cells = [
-                      <Box key={`${hora}-hora`} sx={{ border: '1px solid #222', minHeight: 56, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, color: '#aaa', bgcolor: '#181818', fontWeight: 600 }}>
+                      <Box 
+                        key={`${hora}-hora`} 
+                        sx={{ 
+                          border: '1px solid #222',
+                          height: '100%',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontSize: 15,
+                          color: '#aaa',
+                          bgcolor: '#181818',
+                          fontWeight: 600,
+                          position: 'sticky',
+                          left: 0,
+                          zIndex: 1
+                        }}
+                      >
                         {hora}
                       </Box>
                     ];
 
                     funcionarios.forEach((func) => {
-                      const ag = agendamentos.find(a => {
-                        const match = a.funcionario === func.id && a.horario === hora;
-                        if (match) {
-                          console.log(`Match encontrado para ${hora} - ${func.nome}:`, {
-                            agendamento: {
-                              cliente: a.cliente,
-                              servico: a.servico?.nome,
-                              horario: a.horario,
-                              funcionario: a.funcionario
-                            },
-                            funcionario: {
-                              id: func.id,
-                              nome: func.nome
-                            }
-                          });
-                        }
-                        return match;
+                      const agendamentosDoFuncionario = agendamentos.filter(a => {
+                        const [horaInicio] = a.horaInicio.split(':');
+                        const [horaFim] = a.horaFim.split(':');
+                        const horaInicioNum = parseInt(horaInicio);
+                        const horaFimNum = parseInt(horaFim);
+                        
+                        return a.funcionarioId === func.id && 
+                               horaNum >= horaInicioNum && 
+                               horaNum < horaFimNum;
                       });
 
                       cells.push(
                         <Box 
                           key={`${hora}-${func.id}`}
                           sx={{ 
-                            border: '1px solid #222', 
-                            minHeight: 56, 
-                            display: 'flex', 
-                            flexDirection: 'column',
-                            alignItems: 'center', 
-                            justifyContent: 'center', 
-                            fontSize: 14, 
-                            color: ag ? '#fff' : '#888', 
-                            bgcolor: ag ? '#333' : 'transparent',
-                            p: 1,
-                            textAlign: 'center'
+                            border: '1px solid #222',
+                            height: '100%',
+                            position: 'relative',
+                            bgcolor: 'transparent'
                           }}
                         >
-                          {ag ? (
-                            <>
-                              <Typography sx={{ fontWeight: 600 }}>{ag.cliente}</Typography>
-                              <Typography sx={{ fontSize: 12, color: '#aaa' }}>{ag.servico.nome}</Typography>
-                              <Typography sx={{ fontSize: 12, color: '#aaa' }}>
-                                R$ {Number(ag.servico.preco).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                              </Typography>
-                            </>
-                          ) : ''}
+                          {agendamentosDoFuncionario.map((ag) => {
+                            const [horaInicio] = ag.horaInicio.split(':');
+                            const [horaFim] = ag.horaFim.split(':');
+                            const horaInicioNum = parseInt(horaInicio);
+                            const horaFimNum = parseInt(horaFim);
+                            const duracao = horaFimNum - horaInicioNum;
+                            
+                            return (
+                              <Box
+                                key={ag.id}
+                                sx={{
+                                  position: 'absolute',
+                                  top: 0,
+                                  left: 0,
+                                  right: 0,
+                                  height: `${duracao * 100}%`,
+                                  bgcolor: '#333',
+                                  border: '1px solid #444',
+                                  borderRadius: 1,
+                                  p: 1,
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                  gap: 0.5,
+                                  overflow: 'hidden'
+                                }}
+                              >
+                                <Typography sx={{ fontWeight: 600, fontSize: 14 }}>
+                                  {ag.cliente}
+                                </Typography>
+                                <Typography sx={{ fontSize: 12, color: '#aaa' }}>
+                                  {ag.servico.nome}
+                                </Typography>
+                                <Typography sx={{ fontSize: 12, color: '#aaa' }}>
+                                  R$ {Number(ag.servico.preco).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                </Typography>
+                              </Box>
+                            );
+                          })}
                         </Box>
                       );
                     });
