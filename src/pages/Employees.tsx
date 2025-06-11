@@ -8,6 +8,8 @@ import { useEffect, useState } from 'react';
 import { db } from '../lib/firebase';
 import { collection, getDocs, doc, updateDoc, addDoc, deleteDoc, getDoc, query, where } from 'firebase/firestore';
 import { useUserContext } from '../contexts/UserContext';
+import { collection, getDocs, doc, updateDoc, addDoc, deleteDoc, getDoc, query, where } from 'firebase/firestore';
+import { useUserContext } from '../contexts/UserContext';
 
 interface Funcionario {
   id: string;
@@ -15,7 +17,13 @@ interface Funcionario {
   telefone: string;
   email: string;
   fotoPerfil: string;
+  fotoPerfil: string;
   servicosHabilitados: string[];
+  diasFuncionamento?: string[];
+  horarioFuncionamento?: {
+    inicio: string;
+    fim: string;
+  };
   diasFuncionamento?: string[];
   horarioFuncionamento?: {
     inicio: string;
@@ -28,7 +36,13 @@ const initialNovoFuncionario: Omit<Funcionario, 'id'> = {
   telefone: '',
   email: '',
   fotoPerfil: '',
+  fotoPerfil: '',
   servicosHabilitados: [],
+  diasFuncionamento: ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta'],
+  horarioFuncionamento: {
+    inicio: '09:00',
+    fim: '18:00'
+  }
   diasFuncionamento: ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta'],
   horarioFuncionamento: {
     inicio: '09:00',
@@ -168,6 +182,41 @@ export default function Employees() {
     } catch (error) {
       console.error('Erro ao salvar:', error);
     }
+    if (!editId || !userId) return;
+    try {
+      const ref = doc(db, 'users', editId);
+      await updateDoc(ref, {
+        nome: editData.nome,
+        telefone: editData.telefone,
+        email: editData.email,
+        servicosHabilitados: editData.servicosHabilitados,
+        diasFuncionamento: editData.diasFuncionamento,
+        horarioFuncionamento: editData.horarioFuncionamento,
+      });
+
+      // Buscar a empresa correta
+      const empresasRef = collection(db, 'empresas');
+      const q = query(empresasRef, where('userId', '==', userId));
+      const empresasSnapshot = await getDocs(q);
+      
+      if (!empresasSnapshot.empty) {
+        const empresaDoc = empresasSnapshot.docs[0];
+        const empresaData = empresaDoc.data();
+        
+        if (empresaData) {
+          const funcionariosAtualizados = empresaData.funcionarios.map((id: string) => 
+            id === editId ? { ...editData, id } : id
+          );
+          await updateDoc(doc(db, 'empresas', empresaDoc.id), { funcionarios: funcionariosAtualizados });
+        }
+      }
+
+      setFuncionarios(funcionarios.map(f => f.id === editId ? { ...f, ...editData } as Funcionario : f));
+      setEditId(null);
+      setEditData({});
+    } catch (error) {
+      console.error('Erro ao salvar:', error);
+    }
   };
 
   const handleNovoChange = (field: keyof Omit<Funcionario, 'id'>, value: any) => {
@@ -175,6 +224,37 @@ export default function Employees() {
   };
 
   const handleNovoSalvar = async () => {
+    if (!userId) return;
+    try {
+      // Criar novo funcionário
+      const funcionarioRef = await addDoc(collection(db, 'users'), {
+        ...novoFuncionario,
+        tipoUsuario: 'Funcionario',
+        createdAt: new Date(),
+        updatedAt: new Date()
+      });
+
+      // Buscar a empresa correta
+      const empresasRef = collection(db, 'empresas');
+      const q = query(empresasRef, where('userId', '==', userId));
+      const empresasSnapshot = await getDocs(q);
+      
+      if (!empresasSnapshot.empty) {
+        const empresaDoc = empresasSnapshot.docs[0];
+        const empresaData = empresaDoc.data();
+        
+        if (empresaData) {
+          const funcionariosAtualizados = [...(empresaData.funcionarios || []), funcionarioRef.id];
+          await updateDoc(doc(db, 'empresas', empresaDoc.id), { funcionarios: funcionariosAtualizados });
+        }
+      }
+
+      setFuncionarios([...funcionarios, { ...novoFuncionario, id: funcionarioRef.id }]);
+      setNovoFuncionario(initialNovoFuncionario);
+      setOpenNovo(false);
+    } catch (error) {
+      console.error('Erro ao criar funcionário:', error);
+    }
     if (!userId) return;
     try {
       // Criar novo funcionário
@@ -214,6 +294,41 @@ export default function Employees() {
   };
 
   const handleDelete = async (id: string) => {
+    if (!userId || !window.confirm('Tem certeza que deseja excluir este funcionário?')) return;
+    try {
+      // Remover funcionário
+      await deleteDoc(doc(db, 'users', id));
+
+      // Buscar a empresa correta
+      const empresasRef = collection(db, 'empresas');
+      const q = query(empresasRef, where('userId', '==', userId));
+      const empresasSnapshot = await getDocs(q);
+      
+      if (!empresasSnapshot.empty) {
+        const empresaDoc = empresasSnapshot.docs[0];
+        const empresaData = empresaDoc.data();
+        
+        if (empresaData) {
+          const funcionariosAtualizados = empresaData.funcionarios.filter((funcId: string) => funcId !== id);
+          await updateDoc(doc(db, 'empresas', empresaDoc.id), { funcionarios: funcionariosAtualizados });
+        }
+      }
+
+      setFuncionarios(funcionarios.filter(f => f.id !== id));
+      setEditId(null);
+      setEditData({});
+    } catch (error) {
+      console.error('Erro ao deletar funcionário:', error);
+    }
+  };
+
+  if (loading) {
+    return (
+      <Box sx={{ p: 2, display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '200px' }}>
+        <Typography>Carregando...</Typography>
+      </Box>
+    );
+  }
     if (!userId || !window.confirm('Tem certeza que deseja excluir este funcionário?')) return;
     try {
       // Remover funcionário
@@ -299,6 +414,22 @@ export default function Employees() {
                         ))}
                       </Select>
                     </FormControl>
+                    <FormControl fullWidth sx={{ mb: 1 }}>
+                      <InputLabel sx={{ color: '#aaa' }}>Serviços Habilitados</InputLabel>
+                      <Select
+                        multiple
+                        value={editData.servicosHabilitados || []}
+                        onChange={e => handleChange('servicosHabilitados', e.target.value)}
+                        sx={{ color: '#fff', '.MuiSelect-icon': { color: '#fff' } }}
+                        renderValue={(selected) => (selected as string[]).join(', ')}
+                      >
+                        {servicos.map((servico) => (
+                          <MenuItem key={servico.id} value={servico.nome}>
+                            {servico.nome}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
                     <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, mt: 1 }}>
                       <Box>
                         <IconButton onClick={handleSave} sx={{ color: 'lightgreen' }}><CheckIcon /></IconButton>
@@ -335,8 +466,35 @@ export default function Employees() {
                       )}
                       <Typography variant="h5" color="#aaa">{func.nome}</Typography>
                     </Box>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                      {func.fotoPerfil ? (
+                        <img 
+                          src={func.fotoPerfil} 
+                          alt={func.nome}
+                          style={{ width: 60, height: 60, borderRadius: '50%', objectFit: 'cover' }}
+                        />
+                      ) : (
+                        <Box 
+                          sx={{ 
+                            width: 60, 
+                            height: 60, 
+                            borderRadius: '50%', 
+                            bgcolor: '#444',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                          }}
+                        >
+                          <Typography variant="h5">{func.nome.charAt(0)}</Typography>
+                        </Box>
+                      )}
+                      <Typography variant="h5" color="#aaa">{func.nome}</Typography>
+                    </Box>
                     <Typography><b>Telefone:</b> {func.telefone}</Typography>
                     <Typography><b>Email:</b> {func.email}</Typography>
+                    <Typography><b>Serviços:</b> {func.servicosHabilitados?.join(', ') || 'Nenhum'}</Typography>
+                    <Typography><b>Horário:</b> {func.horarioFuncionamento?.inicio} - {func.horarioFuncionamento?.fim}</Typography>
+                    <Typography><b>Dias:</b> {func.diasFuncionamento?.join(', ')}</Typography>
                     <Typography><b>Serviços:</b> {func.servicosHabilitados?.join(', ') || 'Nenhum'}</Typography>
                     <Typography><b>Horário:</b> {func.horarioFuncionamento?.inicio} - {func.horarioFuncionamento?.fim}</Typography>
                     <Typography><b>Dias:</b> {func.diasFuncionamento?.join(', ')}</Typography>
@@ -394,6 +552,21 @@ export default function Employees() {
             fullWidth
             sx={{ mb: 2 }}
           />
+          <FormControl fullWidth sx={{ mb: 2 }}>
+            <InputLabel>Serviços Habilitados</InputLabel>
+            <Select
+              multiple
+              value={novoFuncionario.servicosHabilitados}
+              onChange={e => handleNovoChange('servicosHabilitados', e.target.value)}
+              renderValue={(selected) => (selected as string[]).join(', ')}
+            >
+              {servicos.map((servico) => (
+                <MenuItem key={servico.id} value={servico.nome}>
+                  {servico.nome}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
           <FormControl fullWidth sx={{ mb: 2 }}>
             <InputLabel>Serviços Habilitados</InputLabel>
             <Select
