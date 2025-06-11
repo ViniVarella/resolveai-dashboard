@@ -3,8 +3,9 @@ import { useState } from 'react';
 import Visibility from '@mui/icons-material/Visibility';
 import VisibilityOff from '@mui/icons-material/VisibilityOff';
 import { db } from '../lib/firebase';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, updateDoc } from 'firebase/firestore';
 import { useNavigate, Link } from 'react-router-dom';
+import { useUserContext } from '../contexts/UserContext';
 
 export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
@@ -14,23 +15,72 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
+  const {
+    setNome: setNomeGlobal,
+    setSenha: setSenhaGlobal,
+    setUsuarioGlobal,
+    setCidade: setCidadeGlobal,
+    setEndereco: setEnderecoGlobal,
+    setNumero: setNumeroGlobal,
+    setNumeroTelefone: setTelefoneGlobal,
+    setEmail: setEmailGlobal,
+    setId: setIdGlobal,
+    setFotoPerfil: setFotoPerfilGlobal,
+  } = useUserContext();
+
   const handleLogin = async () => {
+    if (!email || !senha) {
+      setError('Por favor, preencha o email e a senha.');
+      return;
+    }
+
     setError('');
     setLoading(true);
+    const normalizedEmail = email.trim().toLowerCase();
+
     try {
       const usersRef = collection(db, 'users');
-      const q = query(usersRef, where('email', '==', email), where('senha', '==', senha));
+      const q = query(
+        usersRef,
+        where('email', '==', normalizedEmail),
+        where('senha', '==', senha)
+      );
       const snapshot = await getDocs(q);
+
       if (!snapshot.empty) {
-        setError('');
-        const userData = snapshot.docs[0].data();
-        localStorage.setItem('auth', 'true');
-        localStorage.setItem('fotoPerfil', userData.fotoPerfil || '');
-        navigate('/home');
+        const userDoc = snapshot.docs[0];
+        const userData = userDoc.data();
+        
+        // Set global context values
+        setNomeGlobal(userData.nome || '');
+        setSenhaGlobal(userData.senha || '');
+        setUsuarioGlobal(userData.tipoUsuario || '');
+        setCidadeGlobal(userData.endereco?.cidade || '');
+        setEnderecoGlobal(userData.endereco?.rua || '');
+        setNumeroGlobal(userData.endereco?.numero || '');
+        setTelefoneGlobal(userData.telefone || '');
+        setEmailGlobal(normalizedEmail);
+        setIdGlobal(userDoc.id);
+
+        // Handle profile image
+        if (userData.fotoPerfil) {
+          setFotoPerfilGlobal(userData.fotoPerfil);
+          await updateDoc(doc(db, 'users', userDoc.id), {
+            fotoPerfil: userData.fotoPerfil
+          });
+        }
+
+        // Navigate based on user type
+        if (userData.tipoUsuario === 'Funcionario') {
+          navigate('/funcionario-home');
+        } else {
+          navigate('/home');
+        }
       } else {
         setError('E-mail ou senha incorretos.');
       }
     } catch (e) {
+      console.error('Erro ao fazer login:', e);
       setError('Erro ao autenticar. Tente novamente.');
     } finally {
       setLoading(false);
@@ -117,7 +167,14 @@ export default function Login() {
               {error}
             </Typography>
           )}
-          <Typography variant="body2" color="#aaa" mb={2} sx={{ cursor: 'pointer' }}>
+          <Typography 
+            variant="body2" 
+            color="#aaa" 
+            mb={2} 
+            sx={{ cursor: 'pointer' }}
+            component={Link}
+            to="/recuperar-senha"
+          >
             Esqueceu a senha?
           </Typography>
           <Button

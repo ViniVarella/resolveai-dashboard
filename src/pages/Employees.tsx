@@ -6,21 +6,34 @@ import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
 import { useEffect, useState } from 'react';
 import { db } from '../lib/firebase';
-import { collection, getDocs, doc, updateDoc, addDoc, deleteDoc, getDoc } from 'firebase/firestore';
+import { collection, getDocs, doc, updateDoc, addDoc, deleteDoc, getDoc, query, where } from 'firebase/firestore';
+import { useUserContext } from '../contexts/UserContext';
 
 interface Funcionario {
   id: string;
   nome: string;
   telefone: string;
   email: string;
+  fotoPerfil: string;
   servicosHabilitados: string[];
+  diasFuncionamento?: string[];
+  horarioFuncionamento?: {
+    inicio: string;
+    fim: string;
+  };
 }
 
 const initialNovoFuncionario: Omit<Funcionario, 'id'> = {
   nome: '',
   telefone: '',
   email: '',
+  fotoPerfil: '',
   servicosHabilitados: [],
+  diasFuncionamento: ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta'],
+  horarioFuncionamento: {
+    inicio: '09:00',
+    fim: '18:00'
+  }
 };
 
 export default function Employees() {
@@ -30,25 +43,80 @@ export default function Employees() {
   const [loading, setLoading] = useState(true);
   const [openNovo, setOpenNovo] = useState(false);
   const [novoFuncionario, setNovoFuncionario] = useState<Omit<Funcionario, 'id'>>(initialNovoFuncionario);
+  const [servicos, setServicos] = useState<Array<{ id: string; nome: string }>>([]);
+  const { id: userId } = useUserContext();
 
   useEffect(() => {
-    async function fetchFuncionarios() {
+    async function fetchData() {
+      if (!userId) {
+        console.error('ID do usuário não encontrado');
+        setLoading(false);
+        return;
+      }
+
       setLoading(true);
-      // Buscar empresa (assumindo apenas uma empresa, id 'empresa1')
-      const empresaDoc = await getDoc(doc(db, 'empresas', 'empresa1'));
-      const empresaData = empresaDoc.data();
-      const ids: string[] = empresaData?.funcionarios || [];
-      // Buscar dados dos funcionários
-      const usersCol = collection(db, 'users');
-      const usersSnap = await getDocs(usersCol);
-      const users = usersSnap.docs
-        .filter(doc => ids.includes(doc.id))
-        .map(doc => ({ id: doc.id, ...doc.data() } as Funcionario));
-      setFuncionarios(users);
-      setLoading(false);
+      try {
+        // Buscar empresa usando o userId do usuário global
+        const empresasRef = collection(db, 'empresas');
+        const q = query(empresasRef, where('userId', '==', userId));
+        const empresasSnapshot = await getDocs(q);
+        
+        if (empresasSnapshot.empty) {
+          console.error('Empresa não encontrada para o usuário:', userId);
+          setLoading(false);
+          return;
+        }
+
+        const empresaDoc = empresasSnapshot.docs[0];
+        const empresaData = empresaDoc.data();
+        const empresaId = empresaDoc.id;
+        
+        console.log('Dados da empresa:', empresaData);
+        
+        // Buscar serviços da empresa para o select
+        const servicosArray = empresaData.servicos?.map((servico: any) => ({
+          id: servico.id,
+          nome: servico.nome
+        })) || [];
+        console.log('Serviços encontrados:', servicosArray);
+        setServicos(servicosArray);
+
+        // Buscar funcionários da empresa
+        const funcionariosIds = empresaData.funcionarios || [];
+        console.log('IDs dos funcionários:', funcionariosIds);
+
+        const funcionariosPromises = funcionariosIds.map(async (id: string) => {
+          console.log('Buscando funcionário com ID:', id);
+          const funcionarioDoc = await getDoc(doc(db, 'users', id));
+          console.log('Documento do funcionário existe?', funcionarioDoc.exists());
+          if (funcionarioDoc.exists()) {
+            const data = funcionarioDoc.data();
+            console.log('Dados do funcionário:', data);
+            return {
+              id: funcionarioDoc.id,
+              nome: data.nome || '',
+              telefone: data.telefone || '',
+              email: data.email || '',
+              fotoPerfil: data.fotoPerfil || '',
+              servicosHabilitados: data.servicosHabilitados || [],
+              diasFuncionamento: data.diasFuncionamento || [],
+              horarioFuncionamento: data.horarioFuncionamento || { inicio: '09:00', fim: '18:00' }
+            } as Funcionario;
+          }
+          return null;
+        });
+
+        const funcionariosData = (await Promise.all(funcionariosPromises)).filter(Boolean) as Funcionario[];
+        console.log('Funcionários processados:', funcionariosData);
+        setFuncionarios(funcionariosData);
+      } catch (error) {
+        console.error('Erro ao buscar dados:', error);
+      } finally {
+        setLoading(false);
+      }
     }
-    fetchFuncionarios();
-  }, []);
+    fetchData();
+  }, [userId]);
 
   const handleEdit = (func: Funcionario) => {
     setEditId(func.id);
@@ -65,31 +133,79 @@ export default function Employees() {
   };
 
   const handleSave = async () => {
-    if (!editId) return;
-    const ref = doc(db, 'users', editId);
-    await updateDoc(ref, {
-      nome: editData.nome,
-      telefone: editData.telefone,
-      email: editData.email,
-      servicosHabilitados: editData.servicosHabilitados,
-    });
-    setFuncionarios(funcionarios.map(f => f.id === editId ? { ...f, ...editData } as Funcionario : f));
-    setEditId(null);
-    setEditData({});
+    if (!editId || !userId) return;
+    try {
+      const ref = doc(db, 'users', editId);
+      await updateDoc(ref, {
+        nome: editData.nome,
+        telefone: editData.telefone,
+        email: editData.email,
+        servicosHabilitados: editData.servicosHabilitados,
+        diasFuncionamento: editData.diasFuncionamento,
+        horarioFuncionamento: editData.horarioFuncionamento,
+      });
+
+      // Buscar a empresa correta
+      const empresasRef = collection(db, 'empresas');
+      const q = query(empresasRef, where('userId', '==', userId));
+      const empresasSnapshot = await getDocs(q);
+      
+      if (!empresasSnapshot.empty) {
+        const empresaDoc = empresasSnapshot.docs[0];
+        const empresaData = empresaDoc.data();
+        
+        if (empresaData) {
+          const funcionariosAtualizados = empresaData.funcionarios.map((id: string) => 
+            id === editId ? { ...editData, id } : id
+          );
+          await updateDoc(doc(db, 'empresas', empresaDoc.id), { funcionarios: funcionariosAtualizados });
+        }
+      }
+
+      setFuncionarios(funcionarios.map(f => f.id === editId ? { ...f, ...editData } as Funcionario : f));
+      setEditId(null);
+      setEditData({});
+    } catch (error) {
+      console.error('Erro ao salvar:', error);
+    }
   };
 
-  // Cadastro de novo funcionário
   const handleNovoChange = (field: keyof Omit<Funcionario, 'id'>, value: any) => {
     setNovoFuncionario(prev => ({ ...prev, [field]: value }));
   };
 
   const handleNovoSalvar = async () => {
-    const docRef = await addDoc(collection(db, 'users'), {
-      ...novoFuncionario,
-    });
-    setFuncionarios([...funcionarios, { ...novoFuncionario, id: docRef.id }]);
-    setNovoFuncionario(initialNovoFuncionario);
-    setOpenNovo(false);
+    if (!userId) return;
+    try {
+      // Criar novo funcionário
+      const funcionarioRef = await addDoc(collection(db, 'users'), {
+        ...novoFuncionario,
+        tipoUsuario: 'Funcionario',
+        createdAt: new Date(),
+        updatedAt: new Date()
+      });
+
+      // Buscar a empresa correta
+      const empresasRef = collection(db, 'empresas');
+      const q = query(empresasRef, where('userId', '==', userId));
+      const empresasSnapshot = await getDocs(q);
+      
+      if (!empresasSnapshot.empty) {
+        const empresaDoc = empresasSnapshot.docs[0];
+        const empresaData = empresaDoc.data();
+        
+        if (empresaData) {
+          const funcionariosAtualizados = [...(empresaData.funcionarios || []), funcionarioRef.id];
+          await updateDoc(doc(db, 'empresas', empresaDoc.id), { funcionarios: funcionariosAtualizados });
+        }
+      }
+
+      setFuncionarios([...funcionarios, { ...novoFuncionario, id: funcionarioRef.id }]);
+      setNovoFuncionario(initialNovoFuncionario);
+      setOpenNovo(false);
+    } catch (error) {
+      console.error('Erro ao criar funcionário:', error);
+    }
   };
 
   const handleNovoCancelar = () => {
@@ -98,12 +214,41 @@ export default function Employees() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm('Tem certeza que deseja excluir este funcionário?')) return;
-    await deleteDoc(doc(db, 'users', id));
-    setFuncionarios(funcionarios.filter(f => f.id !== id));
-    setEditId(null);
-    setEditData({});
+    if (!userId || !window.confirm('Tem certeza que deseja excluir este funcionário?')) return;
+    try {
+      // Remover funcionário
+      await deleteDoc(doc(db, 'users', id));
+
+      // Buscar a empresa correta
+      const empresasRef = collection(db, 'empresas');
+      const q = query(empresasRef, where('userId', '==', userId));
+      const empresasSnapshot = await getDocs(q);
+      
+      if (!empresasSnapshot.empty) {
+        const empresaDoc = empresasSnapshot.docs[0];
+        const empresaData = empresaDoc.data();
+        
+        if (empresaData) {
+          const funcionariosAtualizados = empresaData.funcionarios.filter((funcId: string) => funcId !== id);
+          await updateDoc(doc(db, 'empresas', empresaDoc.id), { funcionarios: funcionariosAtualizados });
+        }
+      }
+
+      setFuncionarios(funcionarios.filter(f => f.id !== id));
+      setEditId(null);
+      setEditData({});
+    } catch (error) {
+      console.error('Erro ao deletar funcionário:', error);
+    }
   };
+
+  if (loading) {
+    return (
+      <Box sx={{ p: 2, display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '200px' }}>
+        <Typography>Carregando...</Typography>
+      </Box>
+    );
+  }
 
   return (
     <Box sx={{ p: 2 }}>
@@ -138,13 +283,22 @@ export default function Employees() {
                       fullWidth
                       sx={{ mb: 1, input: { color: '#fff' }, label: { color: '#aaa' } }}
                     />
-                    <TextField
-                      label="Serviços Habilitados"
-                      value={editData.servicosHabilitados?.join(', ')}
-                      onChange={e => handleChange('servicosHabilitados', e.target.value.split(',').map((s: string) => s.trim()))}
-                      fullWidth
-                      sx={{ mb: 1, input: { color: '#fff' }, label: { color: '#aaa' } }}
-                    />
+                    <FormControl fullWidth sx={{ mb: 1 }}>
+                      <InputLabel sx={{ color: '#aaa' }}>Serviços Habilitados</InputLabel>
+                      <Select
+                        multiple
+                        value={editData.servicosHabilitados || []}
+                        onChange={e => handleChange('servicosHabilitados', e.target.value)}
+                        sx={{ color: '#fff', '.MuiSelect-icon': { color: '#fff' } }}
+                        renderValue={(selected) => (selected as string[]).join(', ')}
+                      >
+                        {servicos.map((servico) => (
+                          <MenuItem key={servico.id} value={servico.nome}>
+                            {servico.nome}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
                     <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, mt: 1 }}>
                       <Box>
                         <IconButton onClick={handleSave} sx={{ color: 'lightgreen' }}><CheckIcon /></IconButton>
@@ -157,10 +311,35 @@ export default function Employees() {
                   </>
                 ) : (
                   <>
-                    <Typography variant="h5" color="#aaa" mb={1}>{func.nome}</Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                      {func.fotoPerfil ? (
+                        <img 
+                          src={func.fotoPerfil} 
+                          alt={func.nome}
+                          style={{ width: 60, height: 60, borderRadius: '50%', objectFit: 'cover' }}
+                        />
+                      ) : (
+                        <Box 
+                          sx={{ 
+                            width: 60, 
+                            height: 60, 
+                            borderRadius: '50%', 
+                            bgcolor: '#444',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                          }}
+                        >
+                          <Typography variant="h5">{func.nome.charAt(0)}</Typography>
+                        </Box>
+                      )}
+                      <Typography variant="h5" color="#aaa">{func.nome}</Typography>
+                    </Box>
                     <Typography><b>Telefone:</b> {func.telefone}</Typography>
                     <Typography><b>Email:</b> {func.email}</Typography>
-                    <Typography><b>Serviços Habilitados:</b> {func.servicosHabilitados?.join(', ')}</Typography>
+                    <Typography><b>Serviços:</b> {func.servicosHabilitados?.join(', ') || 'Nenhum'}</Typography>
+                    <Typography><b>Horário:</b> {func.horarioFuncionamento?.inicio} - {func.horarioFuncionamento?.fim}</Typography>
+                    <Typography><b>Dias:</b> {func.diasFuncionamento?.join(', ')}</Typography>
                     <IconButton onClick={() => handleEdit(func)} sx={{ position: 'absolute', top: 16, right: 16, bgcolor: '#444', color: '#fff', '&:hover': { bgcolor: '#555' } }}>
                       <EditIcon />
                     </IconButton>
@@ -215,13 +394,21 @@ export default function Employees() {
             fullWidth
             sx={{ mb: 2 }}
           />
-          <TextField
-            label="Serviços Habilitados"
-            value={novoFuncionario.servicosHabilitados.join(', ')}
-            onChange={e => handleNovoChange('servicosHabilitados', e.target.value.split(',').map((s: string) => s.trim()))}
-            fullWidth
-            sx={{ mb: 2 }}
-          />
+          <FormControl fullWidth sx={{ mb: 2 }}>
+            <InputLabel>Serviços Habilitados</InputLabel>
+            <Select
+              multiple
+              value={novoFuncionario.servicosHabilitados}
+              onChange={e => handleNovoChange('servicosHabilitados', e.target.value)}
+              renderValue={(selected) => (selected as string[]).join(', ')}
+            >
+              {servicos.map((servico) => (
+                <MenuItem key={servico.id} value={servico.nome}>
+                  {servico.nome}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
         </DialogContent>
         <DialogActions>
           <Button onClick={handleNovoCancelar}>Cancelar</Button>

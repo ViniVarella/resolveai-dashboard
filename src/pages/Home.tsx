@@ -14,19 +14,29 @@ import {
   Legend,
 } from 'chart.js';
 import DataTable from '../components/DataTable';
+import { useUserContext } from '../contexts/UserContext';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
 
 // Tipagem para os dados
 interface Agendamento {
   id: string;
-  cliente: string;
-  servico: string;
+  clienteId: string;
+  empresaId: string;
+  funcionarioId: string;
   data: Timestamp;
-  horario: string;
-  preco: number;
-  funcionario: string;
+  horaInicio: string;
+  horaFim: string;
+  servico: {
+    nome: string;
+    preco: number;
+    duracao: number;
+    valorFinalMuda: boolean;
+    funcionariosIds: string[];
+  };
   status: 'agendado' | 'finalizado' | 'cancelado';
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
 }
 
 // Componentes estilizados
@@ -58,26 +68,45 @@ function getMesAtual() {
   return new Date().getMonth();
 }
 
-async function fetchReceitaPorMes(ano: number): Promise<number[]> {
+async function fetchReceitaPorMes(ano: number, empresaId: string): Promise<number[]> {
+  if (!empresaId) {
+    console.error('ID da empresa não fornecido');
+    return Array(12).fill(0);
+  }
+
   const receitas: number[] = Array(12).fill(0);
   const col = collection(db, 'agendamentos');
-  const q = query(col, where('status', '==', 'finalizado'));
+  const q = query(
+    col, 
+    where('empresaId', '==', empresaId),
+    where('status', '==', 'finalizado')
+  );
+  
   const snapshot = await getDocs(q);
+  console.log('Agendamentos encontrados:', snapshot.size);
+  
   snapshot.forEach(doc => {
     const data = doc.data() as Agendamento;
-    if (!data.preco || !data.data) return;
+    if (!data.servico?.preco || !data.data) return;
     
     // Convertendo o Timestamp do Firestore para Date
     const dataObj = data.data.toDate();
     if (dataObj.getFullYear() === ano) {
       const mes = dataObj.getMonth();
-      receitas[mes] += Number(data.preco);
+      receitas[mes] += Number(data.servico.preco);
     }
   });
+
+  console.log('Receitas por mês:', receitas);
   return receitas;
 }
 
-async function fetchAgendamentosHoje(funcionario?: string): Promise<Agendamento[]> {
+async function fetchAgendamentosHoje(empresaId: string, funcionarioId?: string): Promise<Agendamento[]> {
+  if (!empresaId) {
+    console.error('ID da empresa não fornecido');
+    return [];
+  }
+
   const hoje = new Date();
   hoje.setHours(0, 0, 0, 0);
   const amanha = new Date(hoje);
@@ -90,13 +119,14 @@ async function fetchAgendamentosHoje(funcionario?: string): Promise<Agendamento[
   
   let q = query(
     col, 
+    where('empresaId', '==', empresaId),
     where('data', '>=', inicioHoje),
     where('data', '<', fimHoje),
     where('status', '==', 'agendado')
   );
   
-  if (funcionario) {
-    q = query(q, where('funcionario', '==', funcionario));
+  if (funcionarioId) {
+    q = query(q, where('funcionarioId', '==', funcionarioId));
   }
   
   const snapshot = await getDocs(q);
@@ -110,7 +140,7 @@ async function fetchAgendamentosHoje(funcionario?: string): Promise<Agendamento[
     });
   });
   
-  return agendamentos.sort((a, b) => a.horario.localeCompare(b.horario));
+  return agendamentos.sort((a, b) => a.horaInicio.localeCompare(b.horaInicio));
 }
 
 // Função para obter os meses do semestre atual e os dados correspondentes
@@ -154,6 +184,8 @@ function gerarSemestres(anos: number[]): { label: string, ano: number, semestre:
 }
 
 export default function Home() {
+  const { id: userId } = useUserContext();
+  const [empresaId, setEmpresaId] = useState<string>('');
   const [anos] = useState(() => {
     const atual = getAnoAtual();
     return [atual, atual - 1, atual - 2];
@@ -169,21 +201,49 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [loadingAgenda, setLoadingAgenda] = useState(true);
 
+  // Buscar ID da empresa quando o userId mudar
   useEffect(() => {
+    async function fetchEmpresaId() {
+      if (!userId) return;
+
+      try {
+        const empresasRef = collection(db, 'empresas');
+        const q = query(empresasRef, where('userId', '==', userId));
+        const snapshot = await getDocs(q);
+        
+        if (!snapshot.empty) {
+          const empresaDoc = snapshot.docs[0];
+          setEmpresaId(empresaDoc.id);
+        }
+      } catch (error) {
+        console.error('Erro ao buscar empresa:', error);
+      }
+    }
+
+    fetchEmpresaId();
+  }, [userId]);
+
+  // Atualizar receitas quando empresaId ou semestre mudar
+  useEffect(() => {
+    if (!empresaId) return;
+
     setLoading(true);
-    fetchReceitaPorMes(semestreSelecionado.ano).then(receitas => {
+    fetchReceitaPorMes(semestreSelecionado.ano, empresaId).then(receitas => {
       setReceitas(receitas);
       setLoading(false);
     });
-  }, [semestreSelecionado]);
+  }, [semestreSelecionado, empresaId]);
 
+  // Atualizar agendamentos quando empresaId ou funcionário mudar
   useEffect(() => {
+    if (!empresaId) return;
+
     setLoadingAgenda(true);
-    fetchAgendamentosHoje(funcionarioSelecionado || undefined).then(agendamentos => {
+    fetchAgendamentosHoje(empresaId, funcionarioSelecionado || undefined).then(agendamentos => {
       setAgendamentos(agendamentos);
       setLoadingAgenda(false);
     });
-  }, [funcionarioSelecionado]);
+  }, [empresaId, funcionarioSelecionado]);
 
   // Receita total do semestre selecionado
   const start = semestreSelecionado.semestre === 1 ? 0 : 6;
@@ -259,16 +319,28 @@ export default function Home() {
                     onChange={(e) => setFuncionarioSelecionado(e.target.value as string)}
                     MenuProps={{ PaperProps: { sx: { background: '#222', color: '#fff' } } }}
                   >
-                    <MenuItem value={''}>Todos</MenuItem>
-                    <MenuItem value={'func1'}>Funcionário 1</MenuItem>
-                    <MenuItem value={'func2'}>Funcionário 2</MenuItem>
+                    <MenuItem value="">Todos</MenuItem>
+                    {agendamentos
+                      .filter((a, index, self) => 
+                        index === self.findIndex(b => b.funcionarioId === a.funcionarioId)
+                      )
+                      .map(a => (
+                        <MenuItem key={a.funcionarioId} value={a.funcionarioId}>
+                          {a.funcionarioId}
+                        </MenuItem>
+                      ))
+                    }
                   </StyledSelect>
                 </FormControl>
               </CardHeader>
               <Box sx={{ width: '100%', flex: 1 }}>
                 <DataTable
                   columns={["Horário", "Cliente", "Serviço"]}
-                  rows={agendamentos.map(a => [a.horario, a.cliente, a.servico])}
+                  rows={agendamentos.map(a => [
+                    `${a.horaInicio} - ${a.horaFim}`,
+                    a.clienteId,
+                    a.servico.nome
+                  ])}
                   loading={loadingAgenda}
                   emptyMessage="Nenhum agendamento para hoje"
                 />

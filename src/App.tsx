@@ -12,6 +12,7 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import PrivateRoute from './components/PrivateRoute';
 import { useState } from 'react';
+import { UserProvider } from './contexts/UserContext';
 
 export const SIDEBAR_WIDTH = {
   expanded: 220,
@@ -64,10 +65,12 @@ function AppContent() {
 
 function App() {
   return (
-    <Router>
-      <CssBaseline />
-      <AppContent />
-    </Router>
+    <UserProvider>
+      <Router>
+        <CssBaseline />
+        <AppContent />
+      </Router>
+    </UserProvider>
   );
 }
 
