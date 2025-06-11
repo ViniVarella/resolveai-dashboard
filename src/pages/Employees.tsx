@@ -6,7 +6,8 @@ import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
 import { useEffect, useState } from 'react';
 import { db } from '../lib/firebase';
-import { collection, getDocs, doc, updateDoc, addDoc, deleteDoc, getDoc } from 'firebase/firestore';
+import { collection, getDocs, doc, updateDoc, addDoc, deleteDoc, getDoc, query, where } from 'firebase/firestore';
+import { useUser } from '../contexts/UserContext';
 
 interface Funcionario {
   id: string;
@@ -14,6 +15,11 @@ interface Funcionario {
   telefone: string;
   email: string;
   servicosHabilitados: string[];
+}
+
+interface Empresa {
+  id: string;
+  funcionarios: string[];
 }
 
 const initialNovoFuncionario: Omit<Funcionario, 'id'> = {
@@ -24,28 +30,93 @@ const initialNovoFuncionario: Omit<Funcionario, 'id'> = {
 };
 
 export default function Employees() {
+  const { id: userId } = useUser();
   const [funcionarios, setFuncionarios] = useState<Funcionario[]>([]);
   const [editId, setEditId] = useState<string | null>(null);
   const [editData, setEditData] = useState<Partial<Funcionario>>({});
   const [openNovo, setOpenNovo] = useState(false);
   const [novoFuncionario, setNovoFuncionario] = useState<Omit<Funcionario, 'id'>>(initialNovoFuncionario);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Função para buscar o ID da empresa
+  const fetchEmpresaId = async (userId: string): Promise<string | null> => {
+    try {
+      const empresasRef = collection(db, 'empresas');
+      const q = query(empresasRef, where('userId', '==', userId));
+      const querySnapshot = await getDocs(q);
+      
+      if (querySnapshot.empty) {
+        console.log('Nenhuma empresa encontrada para o usuário:', userId);
+        return null;
+      }
+
+      const empresaDoc = querySnapshot.docs[0];
+      console.log('Empresa encontrada:', empresaDoc.id);
+      return empresaDoc.id;
+    } catch (error) {
+      console.error('Erro ao buscar empresa:', error);
+      return null;
+    }
+  };
 
   useEffect(() => {
     async function fetchFuncionarios() {
-      // Buscar empresa (assumindo apenas uma empresa, id 'empresa1')
-      const empresaDoc = await getDoc(doc(db, 'empresas', 'empresa1'));
-      const empresaData = empresaDoc.data();
-      const ids: string[] = empresaData?.funcionarios || [];
-      // Buscar dados dos funcionários
-      const usersCol = collection(db, 'users');
-      const usersSnap = await getDocs(usersCol);
-      const users = usersSnap.docs
-        .filter(doc => ids.includes(doc.id))
-        .map(doc => ({ id: doc.id, ...doc.data() } as Funcionario));
-      setFuncionarios(users);
+      if (!userId) {
+        setError('Usuário não autenticado');
+        setLoading(false);
+        return;
+      }
+
+      try {
+        setLoading(true);
+        setError(null);
+
+        // Buscar ID da empresa
+        const empresaId = await fetchEmpresaId(userId);
+        if (!empresaId) {
+          setError('Empresa não encontrada');
+          setLoading(false);
+          return;
+        }
+
+        // Buscar dados da empresa
+        const empresaDoc = await getDoc(doc(db, 'empresas', empresaId));
+        const empresaData = empresaDoc.data() as Empresa;
+        
+        if (!empresaData?.funcionarios?.length) {
+          console.log('Nenhum funcionário cadastrado na empresa');
+          setFuncionarios([]);
+          setLoading(false);
+          return;
+        }
+
+        // Buscar dados dos funcionários
+        const funcionariosIds = empresaData.funcionarios;
+        console.log('Buscando funcionários:', funcionariosIds);
+
+        const funcionariosPromises = funcionariosIds.map(async (funcId) => {
+          const funcDoc = await getDoc(doc(db, 'users', funcId));
+          if (funcDoc.exists()) {
+            return { id: funcDoc.id, ...funcDoc.data() } as Funcionario;
+          }
+          return null;
+        });
+
+        const funcionariosData = (await Promise.all(funcionariosPromises)).filter((f): f is Funcionario => f !== null);
+        console.log('Funcionários encontrados:', funcionariosData.length);
+        
+        setFuncionarios(funcionariosData);
+      } catch (error) {
+        console.error('Erro ao buscar funcionários:', error);
+        setError('Erro ao carregar funcionários');
+      } finally {
+        setLoading(false);
+      }
     }
+
     fetchFuncionarios();
-  }, []);
+  }, [userId]);
 
   const handleEdit = (func: Funcionario) => {
     setEditId(func.id);
@@ -63,30 +134,63 @@ export default function Employees() {
 
   const handleSave = async () => {
     if (!editId) return;
-    const ref = doc(db, 'users', editId);
-    await updateDoc(ref, {
-      nome: editData.nome,
-      telefone: editData.telefone,
-      email: editData.email,
-      servicosHabilitados: editData.servicosHabilitados,
-    });
-    setFuncionarios(funcionarios.map(f => f.id === editId ? { ...f, ...editData } as Funcionario : f));
-    setEditId(null);
-    setEditData({});
+    try {
+      const ref = doc(db, 'users', editId);
+      await updateDoc(ref, {
+        nome: editData.nome,
+        telefone: editData.telefone,
+        email: editData.email,
+        servicosHabilitados: editData.servicosHabilitados,
+      });
+      setFuncionarios(funcionarios.map(f => f.id === editId ? { ...f, ...editData } as Funcionario : f));
+      setEditId(null);
+      setEditData({});
+    } catch (error) {
+      console.error('Erro ao salvar funcionário:', error);
+      setError('Erro ao salvar alterações');
+    }
   };
 
-  // Cadastro de novo funcionário
   const handleNovoChange = (field: keyof Omit<Funcionario, 'id'>, value: any) => {
     setNovoFuncionario(prev => ({ ...prev, [field]: value }));
   };
 
   const handleNovoSalvar = async () => {
-    const docRef = await addDoc(collection(db, 'users'), {
-      ...novoFuncionario,
-    });
-    setFuncionarios([...funcionarios, { ...novoFuncionario, id: docRef.id }]);
-    setNovoFuncionario(initialNovoFuncionario);
-    setOpenNovo(false);
+    try {
+      if (!userId) {
+        setError('Usuário não autenticado');
+        return;
+      }
+
+      // Criar novo funcionário
+      const docRef = await addDoc(collection(db, 'users'), {
+        ...novoFuncionario,
+        tipo: 'funcionario'
+      });
+
+      // Buscar empresa
+      const empresaId = await fetchEmpresaId(userId);
+      if (!empresaId) {
+        setError('Empresa não encontrada');
+        return;
+      }
+
+      // Atualizar array de funcionários da empresa
+      const empresaRef = doc(db, 'empresas', empresaId);
+      const empresaDoc = await getDoc(empresaRef);
+      const empresaData = empresaDoc.data() as Empresa;
+      
+      await updateDoc(empresaRef, {
+        funcionarios: [...(empresaData.funcionarios || []), docRef.id]
+      });
+
+      setFuncionarios([...funcionarios, { ...novoFuncionario, id: docRef.id }]);
+      setNovoFuncionario(initialNovoFuncionario);
+      setOpenNovo(false);
+    } catch (error) {
+      console.error('Erro ao criar funcionário:', error);
+      setError('Erro ao criar funcionário');
+    }
   };
 
   const handleNovoCancelar = () => {
@@ -96,11 +200,55 @@ export default function Employees() {
 
   const handleDelete = async (id: string) => {
     if (!window.confirm('Tem certeza que deseja excluir este funcionário?')) return;
-    await deleteDoc(doc(db, 'users', id));
-    setFuncionarios(funcionarios.filter(f => f.id !== id));
-    setEditId(null);
-    setEditData({});
+    
+    try {
+      if (!userId) {
+        setError('Usuário não autenticado');
+        return;
+      }
+
+      // Remover funcionário da coleção users
+      await deleteDoc(doc(db, 'users', id));
+
+      // Buscar e atualizar empresa
+      const empresaId = await fetchEmpresaId(userId);
+      if (!empresaId) {
+        setError('Empresa não encontrada');
+        return;
+      }
+
+      const empresaRef = doc(db, 'empresas', empresaId);
+      const empresaDoc = await getDoc(empresaRef);
+      const empresaData = empresaDoc.data() as Empresa;
+      
+      await updateDoc(empresaRef, {
+        funcionarios: empresaData.funcionarios.filter(fid => fid !== id)
+      });
+
+      setFuncionarios(funcionarios.filter(f => f.id !== id));
+      setEditId(null);
+      setEditData({});
+    } catch (error) {
+      console.error('Erro ao excluir funcionário:', error);
+      setError('Erro ao excluir funcionário');
+    }
   };
+
+  if (loading) {
+    return (
+      <Box sx={{ p: 2, display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
+        <Typography>Carregando funcionários...</Typography>
+      </Box>
+    );
+  }
+
+  if (error) {
+    return (
+      <Box sx={{ p: 2, display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px', color: 'error.main' }}>
+        <Typography>{error}</Typography>
+      </Box>
+    );
+  }
 
   return (
     <Box sx={{ p: 2 }}>
@@ -172,7 +320,7 @@ export default function Employees() {
                       <Typography variant="h5" color="#aaa" mb={1}>{func.nome}</Typography>
                       <Typography><b>Telefone:</b> {func.telefone}</Typography>
                       <Typography><b>Email:</b> {func.email}</Typography>
-                      <Typography><b>Serviços Habilitados:</b> {func.servicosHabilitados?.join(', ')}</Typography>
+                      <Typography><b>Serviços Habilitados:</b> {func.servicosHabilitados?.join(', ') || 'Nenhum'}</Typography>
                       <IconButton onClick={() => handleEdit(func)} sx={{ position: 'absolute', top: 16, right: 16, bgcolor: '#444', color: '#fff', '&:hover': { bgcolor: '#555' } }}>
                         <EditIcon />
                       </IconButton>
@@ -234,6 +382,7 @@ export default function Employees() {
             onChange={e => handleNovoChange('servicosHabilitados', e.target.value.split(',').map((s: string) => s.trim()))}
             fullWidth
             sx={{ mb: 2 }}
+            helperText="Digite os IDs dos serviços separados por vírgula"
           />
         </DialogContent>
         <DialogActions>

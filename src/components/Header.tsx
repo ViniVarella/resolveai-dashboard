@@ -1,6 +1,7 @@
 import { Avatar, IconButton, Box, Menu, MenuItem } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import { useState } from 'react';
+import { useUser } from '../contexts/UserContext';
 
 interface HeaderProps {
   sidebarWidth: number;
@@ -9,18 +10,21 @@ interface HeaderProps {
 export default function Header({ sidebarWidth }: HeaderProps) {
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const navigate = useNavigate();
-
-  const fotoPerfil = localStorage.getItem('fotoPerfil') || '/@image.png';
+  const { fotoPerfil, setIsAuthenticated } = useUser();
 
   const handleAvatarClick = (event: React.MouseEvent<HTMLElement>) => {
     setAnchorEl(event.currentTarget);
   };
+
   const handleClose = () => {
     setAnchorEl(null);
   };
+
   const handleLogout = () => {
     setAnchorEl(null);
+    setIsAuthenticated(false);
     localStorage.removeItem('auth');
+    localStorage.removeItem('userData');
     navigate('/login');
   };
   
@@ -42,7 +46,7 @@ export default function Header({ sidebarWidth }: HeaderProps) {
     >
       <Box sx={{ display: 'flex', alignItems: 'center' }}>
         <IconButton onClick={handleAvatarClick} sx={{ p: 0 }}>
-          <Avatar alt="Admin" src={fotoPerfil} />
+          <Avatar alt="Admin" src={fotoPerfil || '/@image.png'} />
         </IconButton>
         <Menu
           anchorEl={anchorEl}

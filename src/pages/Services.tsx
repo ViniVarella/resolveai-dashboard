@@ -6,7 +6,8 @@ import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
 import { useEffect, useState } from 'react';
 import { db } from '../lib/firebase';
-import { collection, getDocs, doc, updateDoc, addDoc, deleteDoc } from 'firebase/firestore';
+import { collection, getDocs, doc, updateDoc, getDoc, query, where, Timestamp } from 'firebase/firestore';
+import { useUser } from '../contexts/UserContext';
 
 interface Servico {
   id: string;
@@ -15,35 +16,96 @@ interface Servico {
   descricao: string;
   duracao: number;
   preco: number;
+  tipoServico: string;
+  ValorFinalMuda: boolean;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+  imagensUrl?: string[];
+  funcionariosIds?: string[];
 }
 
-const initialNovoServico: Omit<Servico, 'id'> = {
+interface Empresa {
+  id: string;
+  servicos: Servico[];
+}
+
+const initialNovoServico: Omit<Servico, 'id' | 'createdAt' | 'updatedAt'> = {
   categoria: '',
   nome: '',
   descricao: '',
   duracao: 0,
   preco: 0,
+  tipoServico: 'pagamento no final',
+  ValorFinalMuda: true,
 };
 
+async function fetchEmpresaId(userId: string): Promise<string | null> {
+  const empresasRef = collection(db, 'empresas');
+  const q = query(empresasRef, where('userId', '==', userId));
+  const snapshot = await getDocs(q);
+  
+  if (!snapshot.empty) {
+    return snapshot.docs[0].id;
+  }
+  return null;
+}
+
 export default function Services() {
+  const { id: userId } = useUser();
   const [servicos, setServicos] = useState<Servico[]>([]);
   const [editId, setEditId] = useState<string | null>(null);
   const [editData, setEditData] = useState<Partial<Servico>>({});
   const [loading, setLoading] = useState(true);
   const [openNovo, setOpenNovo] = useState(false);
-  const [novoServico, setNovoServico] = useState<Omit<Servico, 'id'>>(initialNovoServico);
+  const [novoServico, setNovoServico] = useState<Omit<Servico, 'id' | 'createdAt' | 'updatedAt'>>(initialNovoServico);
+  const [empresaId, setEmpresaId] = useState<string | null>(null);
 
   useEffect(() => {
+    async function fetchEmpresa() {
+      if (!userId) {
+        console.log('ERRO: User ID não encontrado no contexto');
+        return;
+      }
+
+      const id = await fetchEmpresaId(userId);
+      if (!id) {
+        console.log('ERRO: Empresa não encontrada para o usuário');
+        return;
+      }
+
+      setEmpresaId(id);
+      return id;
+    }
+
     async function fetchServicos() {
       setLoading(true);
-      const col = collection(db, 'servicos');
-      const snapshot = await getDocs(col);
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Servico));
-      setServicos(data);
-      setLoading(false);
+      try {
+        const empresaId = await fetchEmpresa();
+        if (!empresaId) {
+          setLoading(false);
+          return;
+        }
+
+        const empresaRef = doc(db, 'empresas', empresaId);
+        const empresaDoc = await getDoc(empresaRef);
+        
+        if (empresaDoc.exists()) {
+          const empresaData = empresaDoc.data() as Empresa;
+          setServicos(empresaData.servicos || []);
+        } else {
+          console.log('Documento da empresa não encontrado');
+          setServicos([]);
+        }
+      } catch (error) {
+        console.error('Erro ao buscar serviços:', error);
+        setServicos([]);
+      } finally {
+        setLoading(false);
+      }
     }
+
     fetchServicos();
-  }, []);
+  }, [userId]);
 
   const handleEdit = (servico: Servico) => {
     setEditId(servico.id);
@@ -60,34 +122,78 @@ export default function Services() {
   };
 
   const handleSave = async () => {
-    if (!editId) return;
-    const ref = doc(db, 'servicos', editId);
-    await updateDoc(ref, {
-      categoria: editData.categoria,
-      nome: editData.nome,
-      descricao: editData.descricao,
-      duracao: Number(editData.duracao),
-      preco: Number(editData.preco),
-    });
-    setServicos(servicos.map(s => s.id === editId ? { ...s, ...editData } as Servico : s));
-    setEditId(null);
-    setEditData({});
+    if (!editId || !empresaId) return;
+
+    try {
+      const empresaRef = doc(db, 'empresas', empresaId);
+      const empresaDoc = await getDoc(empresaRef);
+      
+      if (!empresaDoc.exists()) {
+        console.error('Empresa não encontrada');
+        return;
+      }
+
+      const empresaData = empresaDoc.data() as Empresa;
+      const servicosAtualizados = empresaData.servicos.map(s => 
+        s.id === editId 
+          ? { 
+              ...s, 
+              ...editData,
+              updatedAt: Timestamp.now()
+            } 
+          : s
+      );
+
+      await updateDoc(empresaRef, { servicos: servicosAtualizados });
+      setServicos(servicosAtualizados);
+      setEditId(null);
+      setEditData({});
+    } catch (error) {
+      console.error('Erro ao atualizar serviço:', error);
+    }
   };
 
-  // Cadastro de novo serviço
-  const handleNovoChange = (field: keyof Omit<Servico, 'id'>, value: any) => {
+  const handleNovoChange = (field: keyof Omit<Servico, 'id' | 'createdAt' | 'updatedAt'>, value: any) => {
     setNovoServico(prev => ({ ...prev, [field]: value }));
   };
 
   const handleNovoSalvar = async () => {
-    const docRef = await addDoc(collection(db, 'servicos'), {
-      ...novoServico,
-      duracao: Number(novoServico.duracao),
-      preco: Number(novoServico.preco),
-    });
-    setServicos([...servicos, { ...novoServico, id: docRef.id }]);
-    setNovoServico(initialNovoServico);
-    setOpenNovo(false);
+    if (!empresaId) {
+      console.error('ERRO: Empresa ID não encontrado');
+      return;
+    }
+
+    try {
+      const empresaRef = doc(db, 'empresas', empresaId);
+      const empresaDoc = await getDoc(empresaRef);
+      
+      if (!empresaDoc.exists()) {
+        console.error('Empresa não encontrada');
+        return;
+      }
+
+      const empresaData = empresaDoc.data() as Empresa;
+      const novoId = crypto.randomUUID();
+      const agora = Timestamp.now();
+      
+      const novoServicoCompleto: Servico = {
+        ...novoServico,
+        id: novoId,
+        createdAt: agora,
+        updatedAt: agora,
+        imagensUrl: [],
+        funcionariosIds: []
+      };
+
+      const servicosAtualizados = [...(empresaData.servicos || []), novoServicoCompleto];
+      await updateDoc(empresaRef, { servicos: servicosAtualizados });
+      
+      setServicos(servicosAtualizados);
+      setNovoServico(initialNovoServico);
+      setOpenNovo(false);
+    } catch (error) {
+      console.error('Erro ao criar novo serviço:', error);
+    }
   };
 
   const handleNovoCancelar = () => {
@@ -97,11 +203,37 @@ export default function Services() {
 
   const handleDelete = async (id: string) => {
     if (!window.confirm('Tem certeza que deseja excluir este serviço?')) return;
-    await deleteDoc(doc(db, 'servicos', id));
-    setServicos(servicos.filter(s => s.id !== id));
-    setEditId(null);
-    setEditData({});
+    if (!empresaId) return;
+
+    try {
+      const empresaRef = doc(db, 'empresas', empresaId);
+      const empresaDoc = await getDoc(empresaRef);
+      
+      if (!empresaDoc.exists()) {
+        console.error('Empresa não encontrada');
+        return;
+      }
+
+      const empresaData = empresaDoc.data() as Empresa;
+      const servicosAtualizados = empresaData.servicos.filter(s => s.id !== id);
+      
+      await updateDoc(empresaRef, { servicos: servicosAtualizados });
+      setServicos(servicosAtualizados);
+      setEditId(null);
+      setEditData({});
+    } catch (error) {
+      console.error('Erro ao excluir serviço:', error);
+    }
   };
+
+  if (!empresaId && !loading) {
+    return (
+      <Box sx={{ p: 2, textAlign: 'center', color: '#888' }}>
+        <Typography variant="h5">Empresa não encontrada</Typography>
+        <Typography>Não foi possível carregar os serviços da empresa.</Typography>
+      </Box>
+    );
+  }
 
   return (
     <Box sx={{ p: 2 }}>
@@ -167,6 +299,13 @@ export default function Services() {
                         fullWidth
                         sx={{ mb: 1, input: { color: '#fff' }, label: { color: '#aaa' } }}
                       />
+                      <TextField
+                        label="Tipo de Serviço"
+                        value={editData.tipoServico}
+                        onChange={e => handleChange('tipoServico', e.target.value)}
+                        fullWidth
+                        sx={{ mb: 1, input: { color: '#fff' }, label: { color: '#aaa' } }}
+                      />
                       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, mt: 1 }}>
                         <Box>
                           <IconButton onClick={handleSave} sx={{ color: 'lightgreen' }}><CheckIcon /></IconButton>
@@ -183,7 +322,9 @@ export default function Services() {
                       <Typography><b>Categoria:</b> {servico.categoria}</Typography>
                       <Typography><b>Valor:</b> R$ {Number(servico.preco).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</Typography>
                       <Typography><b>Descrição:</b> {servico.descricao}</Typography>
-                      <Typography><b>Duração:</b> {servico.duracao}</Typography>
+                      <Typography><b>Duração:</b> {servico.duracao} min</Typography>
+                      <Typography><b>Tipo:</b> {servico.tipoServico}</Typography>
+                      <Typography><b>Valor Final Muda:</b> {servico.ValorFinalMuda ? 'Sim' : 'Não'}</Typography>
                       <IconButton onClick={() => handleEdit(servico)} sx={{ position: 'absolute', top: 16, right: 16, bgcolor: '#444', color: '#fff', '&:hover': { bgcolor: '#555' } }}>
                         <EditIcon />
                       </IconButton>
@@ -240,7 +381,7 @@ export default function Services() {
             sx={{ mb: 2 }}
           />
           <TextField
-            label="Duração"
+            label="Duração (minutos)"
             value={novoServico.duracao}
             onChange={e => handleNovoChange('duracao', e.target.value)}
             type="number"
@@ -252,6 +393,13 @@ export default function Services() {
             value={novoServico.preco}
             onChange={e => handleNovoChange('preco', e.target.value)}
             type="number"
+            fullWidth
+            sx={{ mb: 2 }}
+          />
+          <TextField
+            label="Tipo de Serviço"
+            value={novoServico.tipoServico}
+            onChange={e => handleNovoChange('tipoServico', e.target.value)}
             fullWidth
             sx={{ mb: 2 }}
           />

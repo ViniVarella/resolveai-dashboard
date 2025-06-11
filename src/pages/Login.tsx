@@ -5,14 +5,30 @@ import VisibilityOff from '@mui/icons-material/VisibilityOff';
 import { db } from '../lib/firebase';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { useNavigate, Link } from 'react-router-dom';
+import { useUser } from '../contexts/UserContext';
 
 export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
-  const [email, setEmail] = useState('');
-  const [senha, setSenha] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  
+  const {
+    email,
+    setEmail,
+    senha,
+    setSenha,
+    setNome,
+    setId,
+    setFotoPerfil,
+    setUsuarioGlobal,
+    setNumeroTelefone,
+    setEndereco,
+    setCidade,
+    setNumero,
+    setComplemento,
+    setIsAuthenticated
+  } = useUser();
 
   const handleLogin = async () => {
     setError('');
@@ -24,8 +40,23 @@ export default function Login() {
       if (!snapshot.empty) {
         setError('');
         const userData = snapshot.docs[0].data();
+        
+        // Update global context with user data
+        setNome(userData.nome || '');
+        setId(snapshot.docs[0].id);
+        setFotoPerfil(userData.fotoPerfil || '');
+        setUsuarioGlobal(userData.usuarioGlobal || 'Empresa');
+        setNumeroTelefone(userData.numeroTelefone || '');
+        setEndereco(userData.endereco || false);
+        setCidade(userData.cidade || false);
+        setNumero(userData.numero || '');
+        setComplemento(userData.complemento || '');
+        setIsAuthenticated(true);
+
+        // Store auth state in localStorage
         localStorage.setItem('auth', 'true');
         localStorage.setItem('fotoPerfil', userData.fotoPerfil || '');
+        
         navigate('/home');
       } else {
         setError('E-mail ou senha incorretos.');

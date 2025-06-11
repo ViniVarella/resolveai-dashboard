@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { db } from '../lib/firebase';
 import { collection, query, where, getDocs, Timestamp } from 'firebase/firestore';
 import { Line } from 'react-chartjs-2';
+import { useUser } from '../contexts/UserContext';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -16,16 +17,9 @@ import {
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
 
-// Tipagem para os dados
-interface Agendamento {
-  id: string;
-  cliente: string;
-  servico: string;
-  data: Timestamp;
-  horario: string;
-  preco: number;
-  funcionario: string;
-  status: 'agendado' | 'finalizado' | 'cancelado';
+interface ReceitaData {
+  receitasMensais: number[];
+  receitaTotal: number;
 }
 
 // Componentes estilizados
@@ -53,22 +47,62 @@ function getAnoAtual() {
   return new Date().getFullYear();
 }
 
-async function fetchReceitaPorMes(ano: number): Promise<number[]> {
-  const receitas: number[] = Array(12).fill(0);
-  const col = collection(db, 'agendamentos');
-  const q = query(col, where('status', '==', 'finalizado'));
+async function fetchEmpresaId(userId: string): Promise<string | null> {
+  const empresasRef = collection(db, 'empresas');
+  const q = query(empresasRef, where('userId', '==', userId));
   const snapshot = await getDocs(q);
+  
+  if (!snapshot.empty) {
+    return snapshot.docs[0].id;
+  }
+  return null;
+}
+
+async function fetchReceitaPorMes(ano: number, userId: string): Promise<ReceitaData> {
+  console.log('Buscando ID da empresa para o usuário:', userId);
+  const empresaId = await fetchEmpresaId(userId);
+  
+  if (!empresaId) {
+    console.log('ERRO: Empresa não encontrada para o usuário');
+    return { receitasMensais: Array(12).fill(0), receitaTotal: 0 };
+  }
+  
+  console.log('ID da empresa encontrado:', empresaId);
+  const receitasMensais: number[] = Array(12).fill(0);
+  let receitaTotal = 0;
+  const col = collection(db, 'agendamentos');
+  
+  const q = query(
+    col, 
+    where('empresaId', '==', empresaId),
+    where('status', '==', 'finalizado')
+  );
+  
+  const snapshot = await getDocs(q);
+  console.log('Total de agendamentos encontrados:', snapshot.size);
+  
   snapshot.forEach(doc => {
-    const data = doc.data() as Agendamento;
-    if (!data.preco || !data.data) return;
+    const data = doc.data();
+    if (!data.data || !data.servico?.preco) return;
     
     const dataObj = data.data.toDate();
-    if (dataObj.getFullYear() === ano) {
-      const mes = dataObj.getMonth();
-      receitas[mes] += Number(data.preco);
+    const preco = Number(data.servico.preco);
+    
+    if (!isNaN(preco)) {
+      receitaTotal += preco;
+      
+      if (dataObj.getFullYear() === ano) {
+        const mes = dataObj.getMonth();
+        receitasMensais[mes] += preco;
+        console.log(`Agendamento de ${dataObj.toLocaleDateString()}: R$${preco}`);
+      }
     }
   });
-  return receitas;
+  
+  console.log('Receita total:', receitaTotal);
+  console.log('Receitas mensais:', receitasMensais);
+  
+  return { receitasMensais, receitaTotal };
 }
 
 // Componente para o gráfico de receita
@@ -97,19 +131,32 @@ const ReceitaChart = ({ receitas, options, meses }: {
 };
 
 export default function Revenue() {
+  const { id: userId } = useUser();
   const [anoSelecionado, setAnoSelecionado] = useState(getAnoAtual());
   const [receitas, setReceitas] = useState<number[]>(Array(12).fill(0));
+  const [receitaTotalGeral, setReceitaTotalGeral] = useState(0);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    setLoading(true);
-    fetchReceitaPorMes(anoSelecionado).then(receitas => {
-      setReceitas(receitas);
-      setLoading(false);
-    });
-  }, [anoSelecionado]);
+    if (!userId) {
+      console.log('ERRO: User ID não encontrado no contexto');
+      return;
+    }
 
-  const receitaTotal = receitas.reduce((acc, curr) => acc + curr, 0);
+    setLoading(true);
+    fetchReceitaPorMes(anoSelecionado, userId)
+      .then(({ receitasMensais, receitaTotal }) => {
+        setReceitas(receitasMensais);
+        setReceitaTotalGeral(receitaTotal);
+        setLoading(false);
+      })
+      .catch(error => {
+        console.error('Erro ao buscar receitas:', error);
+        setLoading(false);
+      });
+  }, [anoSelecionado, userId]);
+
+  const receitaAnoAtual = receitas.reduce((acc, curr) => acc + curr, 0);
 
   const options = {
     responsive: true,
@@ -146,7 +193,10 @@ export default function Revenue() {
             <Box>
               <Typography variant="h6" color="#aaa" mb={1} sx={{ fontSize: theme => `calc(${theme.typography.h6.fontSize} + 7px)` }}>Receita</Typography>
               <Typography variant="h4" fontWeight={600}>
-                {loading ? 'Carregando...' : receitaTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                {loading ? 'Carregando...' : receitaAnoAtual.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+              </Typography>
+              <Typography variant="subtitle1" color="#aaa" mt={1}>
+                Receita Total: {loading ? 'Carregando...' : receitaTotalGeral.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
               </Typography>
             </Box>
             <FormControl size="small" sx={{ minWidth: 100 }}>
